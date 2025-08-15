@@ -7,15 +7,17 @@ This guide provides a comprehensive plan for integrating Firebase into MyFlow wi
 ## 🏗️ Architecture Overview
 
 ### Current Implementation Status
+
 ✅ **Complete**: Firebase Configuration & Services  
 ✅ **Complete**: Authentication System  
 ✅ **Complete**: Firestore Security Rules  
 ✅ **Complete**: Database Schema Design  
 🔄 **In Progress**: Module Migration  
 ⏳ **Pending**: Real-time Features  
-⏳ **Pending**: Data Migration  
+⏳ **Pending**: Data Migration
 
 ### Technology Stack
+
 - **Authentication**: Firebase Auth
 - **Database**: Cloud Firestore
 - **Storage**: Firebase Storage (for files)
@@ -61,6 +63,7 @@ firestore.rules                 # Firestore security rules
 ### 1. Firebase Project Setup
 
 1. **Create Firebase Project**
+
    ```bash
    # Visit https://console.firebase.google.com
    # Create a new project: "crm-system"
@@ -68,6 +71,7 @@ firestore.rules                 # Firestore security rules
    ```
 
 2. **Configure Authentication**
+
    - Enable Email/Password authentication
    - Set up authorized domains
    - Configure password requirements
@@ -79,6 +83,7 @@ firestore.rules                 # Firestore security rules
 ### 2. Environment Configuration
 
 1. **Copy environment template**
+
    ```bash
    cp .env.local.example .env.local
    ```
@@ -96,8 +101,9 @@ firestore.rules                 # Firestore security rules
 ### 3. Update Application Entry Points
 
 1. **Update root layout** (`app/layout.tsx`)
+
    ```tsx
-   import { FirebaseAuthProvider } from "@/contexts/firebase-auth-context"
+   import { FirebaseAuthProvider } from "@/contexts/firebase-auth-context";
 
    export default function RootLayout({ children }) {
      return (
@@ -106,29 +112,28 @@ firestore.rules                 # Firestore security rules
            <FirebaseAuthProvider>{children}</FirebaseAuthProvider>
          </body>
        </html>
-     )
+     );
    }
    ```
 
 2. **Update dashboard layout** (`app/(dashboard)/layout.tsx`)
+
    ```tsx
-   import { useFirebaseAuth } from "@/contexts/firebase-auth-context"
-   import FirebaseLoginForm from "@/components/auth/firebase-login-form"
+   import { useFirebaseAuth } from "@/contexts/firebase-auth-context";
+   import FirebaseLoginForm from "@/components/auth/firebase-login-form";
 
    export default function DashboardLayout({ children }) {
-     const { user, loading } = useFirebaseAuth()
+     const { user, loading } = useFirebaseAuth();
 
-     if (loading) return <div>Loading...</div>
-     if (!user) return <FirebaseLoginForm />
+     if (loading) return <div>Loading...</div>;
+     if (!user) return <FirebaseLoginForm />;
 
      return (
        <div className="flex h-screen bg-gray-50">
          <Sidebar />
-         <div className="flex-1 flex flex-col overflow-hidden">
-           {children}
-         </div>
+         <div className="flex-1 flex flex-col overflow-hidden">{children}</div>
        </div>
-     )
+     );
    }
    ```
 
@@ -187,26 +192,27 @@ firestore.rules                 # Firestore security rules
 
 ```typescript
 // User Roles
-type UserRole = "ADMIN" | "MANAGER" | "KAM" | "PROCUREMENT" | "AUDIT"
+type UserRole = "ADMIN" | "MANAGER" | "KAM" | "PROCUREMENT" | "AUDIT";
 
 // Permissions per Module
 const PERMISSION_MATRIX = {
   ADMIN: {
     "vip-profile": ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "EXPORT"],
-    "campaign": ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "EXPORT"],
+    campaign: ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "EXPORT"],
     "gift-approval": ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "EXPORT"],
-    "user-management": ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "EXPORT"]
+    "user-management": ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "EXPORT"],
   },
   KAM: {
     "vip-profile": ["VIEW", "SEARCH", "EDIT", "ADD"],
-    "campaign": ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE"],
-    "gift-approval": ["VIEW", "ADD"]
+    campaign: ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE"],
+    "gift-approval": ["VIEW", "ADD"],
   },
   // ... other roles
-}
+};
 ```
 
 ### Access Restrictions
+
 - **Merchant-based**: Users can only access data from their assigned merchants
 - **Currency-based**: Users can only view data in their assigned currencies
 - **Ownership-based**: KAMs can only manage their own VIP profiles and campaigns
@@ -217,6 +223,7 @@ const PERMISSION_MATRIX = {
 ### 1. VIP Profile Module ✅
 
 **Firebase Services Used:**
+
 - `VIPProfileService.createVIPProfile()`
 - `VIPProfileService.getVIPProfiles()`
 - `VIPProfileService.updateVIPProfile()`
@@ -224,6 +231,7 @@ const PERMISSION_MATRIX = {
 - Real-time listeners for live updates
 
 **Key Features:**
+
 - Real-time profile updates
 - Note management with privacy controls
 - Activity logging
@@ -233,6 +241,7 @@ const PERMISSION_MATRIX = {
 ### 2. Campaign Module
 
 **Implementation Plan:**
+
 - Migrate to `CampaignService`
 - Add real-time campaign status updates
 - Implement campaign target management
@@ -241,6 +250,7 @@ const PERMISSION_MATRIX = {
 ### 3. Gift Approval Module
 
 **Implementation Plan:**
+
 - Migrate to `GiftRequestService`
 - Implement approval workflow
 - Add procurement status tracking
@@ -249,6 +259,7 @@ const PERMISSION_MATRIX = {
 ### 4. User Management Module
 
 **Implementation Plan:**
+
 - Use `FirebaseAuthService` for user CRUD
 - Implement permission matrix management
 - Add user activity monitoring
@@ -257,12 +268,14 @@ const PERMISSION_MATRIX = {
 ## 🔄 Migration Strategy
 
 ### Phase 1: Authentication (✅ Complete)
+
 - [x] Firebase Auth setup
 - [x] User authentication flow
 - [x] Session management
 - [x] Permission checking
 
 ### Phase 2: VIP Profiles (🔄 In Progress)
+
 - [x] Service layer implementation
 - [x] Real-time data sync
 - [x] UI components
@@ -270,24 +283,28 @@ const PERMISSION_MATRIX = {
 - [ ] Testing and validation
 
 ### Phase 3: Campaigns
+
 - [ ] Service layer migration
 - [ ] Campaign workflow implementation
 - [ ] Target management
 - [ ] Analytics integration
 
 ### Phase 4: Gift Approval
+
 - [ ] Approval workflow
 - [ ] Procurement integration
 - [ ] Notification system
 - [ ] Audit trail
 
 ### Phase 5: User Management
+
 - [ ] Complete user CRUD operations
 - [ ] Permission matrix UI
 - [ ] Bulk operations
 - [ ] User activity dashboard
 
 ### Phase 6: Advanced Features
+
 - [ ] Real-time notifications
 - [ ] File upload/management
 - [ ] Data export/import
@@ -296,20 +313,22 @@ const PERMISSION_MATRIX = {
 ## 🧪 Testing Strategy
 
 ### Unit Tests
+
 ```typescript
 // Example test for VIP Profile service
-describe('VIPProfileService', () => {
-  test('should create VIP profile with proper permissions', async () => {
-    const mockUser = { id: 'user1', role: 'KAM', merchants: ['MERCHANT_A'] }
-    const vipData = { name: 'Test VIP', merchant: 'MERCHANT_A' }
-    
-    const result = await VIPProfileService.createVIPProfile(vipData, mockUser.id)
-    expect(result).toBeDefined()
-  })
-})
+describe("VIPProfileService", () => {
+  test("should create VIP profile with proper permissions", async () => {
+    const mockUser = { id: "user1", role: "KAM", merchants: ["MERCHANT_A"] };
+    const vipData = { name: "Test VIP", merchant: "MERCHANT_A" };
+
+    const result = await VIPProfileService.createVIPProfile(vipData, mockUser.id);
+    expect(result).toBeDefined();
+  });
+});
 ```
 
 ### Integration Tests
+
 - Authentication flow
 - Permission enforcement
 - Data access restrictions
@@ -318,12 +337,14 @@ describe('VIPProfileService', () => {
 ## 📊 Monitoring & Analytics
 
 ### Firebase Analytics
+
 - User engagement tracking
 - Feature usage metrics
 - Performance monitoring
 - Error tracking
 
 ### Custom Metrics
+
 - Module usage statistics
 - Permission violations
 - Activity log analysis
@@ -332,6 +353,7 @@ describe('VIPProfileService', () => {
 ## 🚀 Deployment
 
 ### Development Environment
+
 ```bash
 # Install dependencies
 pnpm install
@@ -344,6 +366,7 @@ pnpm dev
 ```
 
 ### Production Deployment
+
 ```bash
 # Build application
 pnpm build
@@ -359,11 +382,13 @@ firebase deploy
 ### Common Issues
 
 1. **Authentication Errors**
+
    - Verify Firebase config
    - Check authorized domains
    - Validate user credentials
 
 2. **Permission Denied**
+
    - Review Firestore security rules
    - Check user permissions
    - Validate merchant/currency access
@@ -374,6 +399,7 @@ firebase deploy
    - Monitor Firestore usage
 
 ### Debug Tools
+
 - Firebase Console
 - Browser DevTools
 - Firestore Debug Mode
@@ -382,6 +408,7 @@ firebase deploy
 ## 📈 Performance Optimization
 
 ### Best Practices
+
 - Use composite indexes for complex queries
 - Implement pagination for large datasets
 - Cache frequently accessed data
@@ -389,21 +416,16 @@ firebase deploy
 - Monitor read/write operations
 
 ### Firestore Optimization
+
 ```typescript
 // Use indexes for complex queries
-const q = query(
-  collection(db, 'vip_profiles'),
-  where('merchant', '==', merchant),
-  where('currency', '==', currency),
-  where('status', '==', 'Active'),
-  orderBy('updatedAt', 'desc'),
-  limit(20)
-)
+const q = query(collection(db, "vip_profiles"), where("merchant", "==", merchant), where("currency", "==", currency), where("status", "==", "Active"), orderBy("updatedAt", "desc"), limit(20));
 ```
 
 ## 🤝 Contributing
 
 ### Development Workflow
+
 1. Create feature branch
 2. Implement changes
 3. Add tests
@@ -411,6 +433,7 @@ const q = query(
 5. Submit pull request
 
 ### Code Standards
+
 - TypeScript for type safety
 - ESLint for code quality
 - Prettier for formatting
@@ -419,6 +442,7 @@ const q = query(
 ## 📞 Support
 
 For questions or issues:
+
 - Check Firebase documentation
 - Review Firestore guides
 - Consult Next.js documentation
@@ -429,16 +453,19 @@ For questions or issues:
 ## 🎯 Next Steps
 
 1. **Complete VIP Profile Migration**
+
    - Finish UI implementation
    - Add data validation
    - Implement error handling
 
 2. **Implement Campaign Module**
+
    - Create Firebase services
    - Build campaign UI
    - Add workflow management
 
 3. **Add Real-time Features**
+
    - Notification system
    - Live updates
    - Collaborative editing
@@ -448,4 +475,4 @@ For questions or issues:
    - Implement rate limiting
    - Add security monitoring
 
-This integration provides a scalable, secure, and feature-rich MyFlow platform powered by Firebase! 🚀 
+This integration provides a scalable, secure, and feature-rich MyFlow platform powered by Firebase! 🚀
