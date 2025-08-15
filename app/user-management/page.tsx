@@ -344,7 +344,7 @@ export default function UserManagementPage() {
                     Add User
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="max-w-[95vw] md:max-w-6xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                       <Settings className="h-5 w-5" />
@@ -356,16 +356,16 @@ export default function UserManagementPage() {
                   </DialogHeader>
 
                   <Tabs defaultValue="basic" className="w-full">
-                    <TabsList className="grid w-full grid-cols-3">
-                      <TabsTrigger value="basic">User Settings</TabsTrigger>
-                      <TabsTrigger value="permissions">Authority Settings</TabsTrigger>
-                      <TabsTrigger value="access">Projects & Currency</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
+                      <TabsTrigger value="basic" className="text-xs sm:text-sm">User Settings</TabsTrigger>
+                      <TabsTrigger value="permissions" className="text-xs sm:text-sm">Authority Settings</TabsTrigger>
+                      <TabsTrigger value="access" className="text-xs sm:text-sm">Projects & Currency</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="basic" className="space-y-6">
                       <div className="bg-orange-100 p-4 rounded-lg">
                         <h3 className="font-semibold text-orange-800 mb-4">User Settings</h3>
-                        <div className="grid grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
                           <div className="space-y-4">
                             <div>
                               <Label htmlFor="department">Department</Label>
@@ -492,12 +492,12 @@ export default function UserManagementPage() {
                       <div className="bg-orange-100 p-4 rounded-lg">
                         <h3 className="font-semibold text-orange-800 mb-4">Authority Settings</h3>
                         <div className="overflow-x-auto">
-                          <table className="w-full border-collapse">
+                          <table className="w-full border-collapse min-w-[600px]">
                             <thead>
                               <tr>
-                                <th className="text-left p-3 font-medium border-b">Module Name</th>
+                                <th className="text-left p-2 sm:p-3 font-medium border-b text-xs sm:text-sm">Module Name</th>
                                 {PERMISSIONS.map(permission => (
-                                  <th key={permission} className="text-center p-3 font-medium border-b min-w-[80px]">
+                                  <th key={permission} className="text-center p-2 sm:p-3 font-medium border-b min-w-[60px] sm:min-w-[80px] text-xs sm:text-sm">
                                     {permission}
                                   </th>
                                 ))}
@@ -506,9 +506,9 @@ export default function UserManagementPage() {
                             <tbody>
                               {MODULES.map(module => (
                                 <tr key={module.id} className="border-b">
-                                  <td className="p-3 font-medium">{module.name}</td>
+                                  <td className="p-2 sm:p-3 font-medium text-xs sm:text-sm">{module.name}</td>
                                   {PERMISSIONS.map(permission => (
-                                    <td key={permission} className="text-center p-3">
+                                    <td key={permission} className="text-center p-2 sm:p-3">
                                       <Checkbox
                                         checked={hasModulePermission(module.id, permission)}
                                         onCheckedChange={(checked) => 
@@ -531,7 +531,7 @@ export default function UserManagementPage() {
                         <div className="space-y-6">
                           <div>
                             <Label className="font-medium mb-3 block">Merchant</Label>
-                            <div className="grid grid-cols-6 gap-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
                               {MERCHANTS.map(merchant => (
                                 <div key={merchant} className="flex items-center space-x-2">
                                   <Checkbox
@@ -561,7 +561,7 @@ export default function UserManagementPage() {
 
                           <div>
                             <Label className="font-medium mb-3 block">Currency</Label>
-                            <div className="grid grid-cols-6 gap-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
                               {CURRENCIES.map(currency => (
                                 <div key={currency} className="flex items-center space-x-2">
                                   <Checkbox
@@ -593,11 +593,11 @@ export default function UserManagementPage() {
                     </TabsContent>
                   </Tabs>
 
-                  <div className="flex gap-4 justify-end mt-6 pt-4 border-t">
-                    <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-end mt-6 pt-4 border-t">
+                    <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)} className="w-full sm:w-auto">
                       Reset
                     </Button>
-                    <Button onClick={editingUser ? handleUpdateUser : handleCreateUser}>
+                    <Button onClick={editingUser ? handleUpdateUser : handleCreateUser} className="w-full sm:w-auto">
                       {editingUser ? 'Submit' : 'Submit'}
                     </Button>
                   </div>

@@ -102,6 +102,7 @@ const mockCampaigns: Campaign[] = [
     name: "January VIP Retention",
     type: "Retention",
     status: "Active",
+
     playerCount: 45,
     callsMade: 32,
     successRate: 78,
@@ -112,6 +113,7 @@ const mockCampaigns: Campaign[] = [
     project: "Premium Casino",
     region: "North America",
     currency: "USD",
+
     description: "Monthly retention campaign targeting Diamond and Platinum tier players",
   },
   {
@@ -136,6 +138,7 @@ const mockCampaigns: Campaign[] = [
     name: "High Value Player Engagement",
     type: "HVP",
     status: "Completed",
+
     playerCount: 12,
     callsMade: 12,
     successRate: 92,
@@ -180,6 +183,7 @@ const mockCampaigns: Campaign[] = [
     project: "Live Casino",
     region: "Europe",
     currency: "EUR",
+
     description: "Targeting high-value European players for exclusive tournaments",
   },
 ];
@@ -344,6 +348,8 @@ const mockPlayers: Player[] = [
 ];
 
 export default function Campaigns() {
+  const { user, loading, hasPermission, canAccessMerchant, canAccessCurrency } = useAuth()
+
   const [campaigns, setCampaigns] = useState<Campaign[]>(mockCampaigns);
   const [filteredCampaigns, setFilteredCampaigns] = useState<Campaign[]>(mockCampaigns);
   const [searchCampaignName, setSearchCampaignName] = useState("");
@@ -362,28 +368,6 @@ export default function Campaigns() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isTableLoading, setIsTableLoading] = useState(false);
-
-  const { user, loading, hasPermission, canAccessMerchant, canAccessCurrency } = useAuth()
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
-          <p className="text-gray-600">Loading your dashboard...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return <FirebaseLoginForm />
-  }
-
-  // Check if user has VIEW permission for campaign module
-  if (!hasPermission('campaign', 'VIEW')) {
-    return <AccessDenied moduleName="Campaign Management" />
-  }
 
   const [analyticsData] = useState<AnalyticsData>(mockAnalyticsData);
   const [chartConfigs, setChartConfigs] = useState<ChartConfig[]>([
@@ -459,6 +443,34 @@ export default function Campaigns() {
       dataSource: "players-filtered",
     },
   ]);
+
+  // Initialize filtered on mount
+  useEffect(() => {
+    // Only apply filters when user is loaded and has proper permissions
+    if (!loading && user && hasPermission('campaign', 'VIEW')) {
+      applyFilters();
+    }
+  }, [campaigns, loading, user]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-gray-600">Loading your dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <FirebaseLoginForm />
+  }
+
+  // Check if user has VIEW permission for campaign module
+  if (!hasPermission('campaign', 'VIEW')) {
+    return <AccessDenied moduleName="Campaign Management" />
+  }
 
   // Available columns for filtering
   const availableColumns = [
@@ -574,11 +586,6 @@ export default function Campaigns() {
     });
     setFilteredCampaigns(filtered);
   };
-
-  // Initialize filtered on mount
-  useEffect(() => {
-    applyFilters();
-  }, [campaigns]);
 
   const handleCreateCampaign = () => {
     if (!newCampaign.name) {
@@ -931,8 +938,9 @@ export default function Campaigns() {
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header title="Campaign Management" description="Manage VIP retention, reactivation, and engagement campaigns" />
-        
-        <div className="flex-1 p-6">
+
+      <div className="flex-1 p-6">
+
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center justify-between">
@@ -980,21 +988,24 @@ export default function Campaigns() {
                           />
                         </PopoverContent>
                       </Popover>
-                    </div>
+            </div>
+
                     <div>
                       <Label>Campaign Tag</Label>
                       <Select value={newCampaignTagOption} onValueChange={(val) => setNewCampaignTagOption(val)}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select tag" />
-                        </SelectTrigger>
-                        <SelectContent>
+              </SelectTrigger>
+              <SelectContent>
+
                           <SelectItem value="HVP">HVP</SelectItem>
                           <SelectItem value="HFTD">HFTD</SelectItem>
                           <SelectItem value="Retention">Retention</SelectItem>
                           <SelectItem value="Reactivation">Reactivation</SelectItem>
                           <SelectItem value="Custom">Custom Tag</SelectItem>
-                        </SelectContent>
-                      </Select>
+              </SelectContent>
+            </Select>
+
                     </div>
                     {newCampaignTagOption === "Custom" && (
                       <div>
@@ -1006,7 +1017,8 @@ export default function Campaigns() {
                       <Label htmlFor="description">Description</Label>
                       <Input id="description" value={newCampaign.description} onChange={(e) => setNewCampaign({ ...newCampaign, description: e.target.value })} placeholder="Brief description of the campaign" />
                     </div>
-                  </div>
+          </div>
+
 
                   {/* Dynamic Filter Criteria */}
                   <div className="space-y-4">
@@ -1015,8 +1027,9 @@ export default function Campaigns() {
                       <Button type="button" variant="outline" size="sm" onClick={addFilterCriteria} className="cursor-pointer">
                         <Plus className="h-4 w-4 mr-2" />
                         Add Filter
-                      </Button>
-                    </div>
+            </Button>
+        </div>
+
 
                     {filterCriteria.length === 0 && (
                       <div className="text-center py-8 bg-slate-50 rounded-lg">
@@ -1027,12 +1040,14 @@ export default function Campaigns() {
                     <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-1">
                       {filterCriteria.map((criteria, index) => (
                         <div key={criteria.id} className="p-4 border rounded-lg bg-slate-50">
-                          <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-3">
+
                             <h4 className="font-medium">Filter {index + 1}</h4>
                             <Button type="button" variant="outline" size="sm" onClick={() => removeFilterCriteria(criteria.id)} className="text-red-600 hover:text-red-700 cursor-pointer">
                               Remove
                             </Button>
-                          </div>
+                  </div>
+
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             {/* Column Selection */}
@@ -1059,7 +1074,8 @@ export default function Campaigns() {
                                   ))}
                                 </SelectContent>
                               </Select>
-                            </div>
+                </div>
+
 
                             {/* Operator Selection */}
                             <div>
@@ -1076,14 +1092,16 @@ export default function Campaigns() {
                                   ))}
                                 </SelectContent>
                               </Select>
-                            </div>
+                  </div>
+
 
                             {/* Value Input */}
                             <div>
                               <Label>Value</Label>
                               {criteria.dataType === "string" && (criteria.operator === "IN" || criteria.operator === "NOT_IN") ? (
                                 // Multi-select for string columns with IN/NOT_IN operators
-                                <div className="space-y-2">
+                  <div className="space-y-2">
+
                                   <div className="flex flex-wrap gap-1">
                                     {Array.isArray(criteria.value) && criteria.value.length > 0 ? (
                                       criteria.value.map((val, idx) => (
@@ -1104,7 +1122,7 @@ export default function Campaigns() {
                                     ) : (
                                       <span className="text-sm text-slate-500">No values selected</span>
                                     )}
-                                  </div>
+                    </div>
                                   <Select
                                     onValueChange={(value) => {
                                       const currentValues = Array.isArray(criteria.value) ? criteria.value : [];
@@ -1162,34 +1180,41 @@ export default function Campaigns() {
                                     placeholder="Max"
                                     type="number"
                                     disabled={!criteria.operator}
-                                  />
-                                </div>
+                      />
+                  </div>
+
                               ) : (
                                 // Single number input
                                 <Input value={criteria.value as string} onChange={(e) => updateFilterCriteria(criteria.id, "value", e.target.value)} placeholder="Enter value" type="number" disabled={!criteria.operator} />
                               )}
-                            </div>
-                          </div>
+                    </div>
+                    </div>
+
 
                           {/* Filter Preview */}
                           {criteria.column && criteria.operator && criteria.value && (
                             <div className="mt-3 p-2 bg-blue-50 rounded text-sm">
                               <span className="font-medium">Preview:</span> {criteria.column} {criteria.operator} {criteria.operator === "BETWEEN" && Array.isArray(criteria.value) ? `${criteria.value[0]} AND ${criteria.value[1]}` : (criteria.operator === "IN" || criteria.operator === "NOT_IN") && Array.isArray(criteria.value) ? `(${criteria.value.join(", ")})` : Array.isArray(criteria.value) ? criteria.value.join(", ") : criteria.value}
-                            </div>
+                    </div>
+
                           )}
-                        </div>
+                  </div>
+
                       ))}
                     </div>
                   </div>
+
 
                   {/* Chart Configuration Section */}
                   <div className="mt-6">
                     <div className="flex items-center justify-between mb-4">
                       <Label className="text-lg font-semibold">Analytics Charts Configuration</Label>
                       <Button
+
                         type="button"
                         variant="outline"
                         size="sm"
+
                         onClick={() => {
                           if (newCampaignCharts.length >= 3) {
                             toast.error("You can add up to 3 charts in the summary.");
@@ -1358,10 +1383,12 @@ export default function Campaigns() {
                                <p className="text-xs text-slate-500">Charts use the player list produced by your Filter Criteria. Configure up to 3 charts.</p>
                              </div>
                             <div className="lg:col-span-4 flex justify-end">
-                              <Button
+                    <Button
+
                                 type="button"
-                                variant="outline"
-                                size="sm"
+                      variant="outline"
+                      size="sm"
+
                                 onClick={() => {
                                   const updated = newCampaignCharts.filter((_, i) => i !== index);
                                   setNewCampaignCharts(updated);
@@ -1369,8 +1396,9 @@ export default function Campaigns() {
                                 className="text-red-600 hover:text-red-700 cursor-pointer"
                               >
                                 Remove
-                              </Button>
-                            </div>
+                    </Button>
+                  </div>
+
                           </div>
                         </div>
                       ))}
@@ -1412,6 +1440,7 @@ export default function Campaigns() {
             </Card>
           ))}
         </div>
+
 
         {/* Filters */}
         <Card className="mb-6 border-0 shadow-lg">
@@ -1503,7 +1532,7 @@ export default function Campaigns() {
                 className="cursor-pointer"
               >
                 Apply Filters
-              </Button>
+                  </Button>
               <Button
                 variant="outline"
                 onClick={() => {
@@ -1522,9 +1551,10 @@ export default function Campaigns() {
               >
                 Clear
               </Button>
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            </CardContent>
+          </Card>
+
 
         {/* Campaigns List */}
         <Card className="border-0 shadow-lg">
@@ -1558,7 +1588,8 @@ export default function Campaigns() {
                         <h3 className="text-xl font-semibold text-slate-900">{campaign.name}</h3>
                         <Badge className={campaign.type === "HFTD" ? "bg-purple-100 text-purple-800 border-purple-200" : campaign.type === "HVP" ? "bg-red-100 text-red-800 border-red-200" : campaign.type === "Retention" ? "bg-blue-100 text-blue-800 border-blue-200" : "bg-orange-100 text-orange-800 border-orange-200"}>{campaign.type}</Badge>
                         <Badge className={campaign.status === "Active" ? "bg-green-100 text-green-800 border-green-200" : campaign.status === "Paused" ? "bg-yellow-100 text-yellow-800 border-yellow-200" : campaign.status === "Completed" ? "bg-gray-100 text-gray-800 border-gray-200" : "bg-slate-100 text-slate-800 border-slate-200"}>{campaign.status}</Badge>
-                      </div>
+      </div>
+
                       <p className="text-slate-600 mb-4">{campaign.description}</p>
 
                       {/* Campaign Metrics */}
@@ -1566,11 +1597,13 @@ export default function Campaigns() {
                         <div className="bg-blue-50 p-3 rounded-lg">
                           <p className="text-sm font-medium text-blue-700">Players</p>
                           <p className="text-2xl font-bold text-blue-900">{campaign.playerCount}</p>
-                        </div>
+      </div>
+
                         <div className="bg-green-50 p-3 rounded-lg">
                           <p className="text-sm font-medium text-green-700">Calls Made</p>
                           <p className="text-2xl font-bold text-green-900">{campaign.callsMade}</p>
-                        </div>
+    </div>
+
                         <div className="bg-purple-50 p-3 rounded-lg">
                           <p className="text-sm font-medium text-purple-700">Success Rate</p>
                           <p className="text-2xl font-bold text-purple-900">{campaign.successRate}%</p>
@@ -1791,3 +1824,4 @@ export default function Campaigns() {
     </div>
   );
 }
+

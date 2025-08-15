@@ -46,28 +46,8 @@ import { Toaster } from "@/components/ui/sonner"
 
 export default function VIPPlayerProfile({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = React.use(params)
-  const [isEditing, setIsEditing] = useState(false)
   const { user, loading, hasPermission, canAccessMerchant, canAccessCurrency } = useAuth()
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
-          <p className="text-gray-600">Loading your dashboard...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return <FirebaseLoginForm />
-  }
-
-  // Check if user has VIEW permission for vip-profile module
-  if (!hasPermission('vip-profile', 'VIEW')) {
-    return <AccessDenied moduleName="VIP Profile Management" />
-  }
+  const [isEditing, setIsEditing] = useState(false)
   const [player, setPlayer] = useState({
     id: resolvedParams.id,
     name: "John Anderson",
@@ -104,6 +84,26 @@ export default function VIPPlayerProfile({ params }: { params: Promise<{ id: str
       frequency: "Daily",
     },
   })
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-gray-600">Loading your dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <FirebaseLoginForm />
+  }
+
+  // Check if user has VIEW permission for vip-profile module
+  if (!hasPermission('vip-profile', 'VIEW')) {
+    return <AccessDenied moduleName="VIP Profile Management" />
+  }
 
   const interactions = [
     {
@@ -287,7 +287,7 @@ export default function VIPPlayerProfile({ params }: { params: Promise<{ id: str
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center space-x-4 mb-4">
-              <Link href="/vip-profile-mock" className="cursor-pointer">
+              <Link href="/vip-profile" className="cursor-pointer">
                 <Button variant="ghost" size="sm" className="cursor-pointer">
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back to VIP Profiles

@@ -8,47 +8,197 @@ import Header from "@/components/layout/header"
 import PermissionGuard from "@/components/common/permission-guard"
 import AccessDenied from "@/components/common/access-denied"
 import { Loader2 } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Plus, Edit, Phone, Gift, Calendar, DollarSign, Users, Mail } from "lucide-react"
+import { TierBadge, PlayerStatusBadge, CurrencyBadge } from "@/components/field-badges"
+import { Label } from "@/components/ui/label"
+import { DataTable } from "@/components/ui/data-table"
+import { MultiSelect } from "@/components/ui/multi-select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import type { DateRange } from "react-day-picker"
+import type { ColumnDef } from "@tanstack/react-table"
+import Link from "next/link"
 
-// Mock VIP data
-const mockVIPs = [
+// Helper function to format dates as DD/MM/YYYY
+const formatDateDDMMYYYY = (date: Date) => {
+  return date.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  })
+}
+
+// Define icon components as simple SVGs
+const Search = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+    />
+  </svg>
+)
+
+const Plus = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+  </svg>
+)
+
+const Eye = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+    />
+  </svg>
+)
+
+const Edit = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+    />
+  </svg>
+)
+
+const Phone = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+    />
+  </svg>
+)
+
+const Gift = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
+    />
+  </svg>
+)
+
+interface VIPPlayer {
+  id: string
+  name: string
+  tier: "Diamond" | "Platinum" | "Gold" | "Silver" | "Bronze"
+  totalDeposits: number
+  currency: "MYR" | "SGD" | "USD"
+  lastActivity: string
+  status: "Active" | "Inactive" | "Dormant"
+  kam: string
+  phone: string
+  email: string
+  birthday: string
+  preferences: string
+}
+
+const mockPlayers: VIPPlayer[] = [
   {
-    id: "1",
-    name: "John Doe",
-    email: "john.doe@example.com",
-    phone: "+1234567890",
-    merchant: "MERCHANT_A",
+    id: "VIP001",
+    name: "John Anderson",
+    tier: "Diamond",
+    totalDeposits: 125000,
     currency: "USD",
-    memberType: "VIP" as const,
-    totalDeposit: 50000,
     lastActivity: "2024-01-15",
     status: "Active",
-    assignedKAM: "1",
+    kam: "A",
+    phone: "+1-555-0123",
+    email: "john.anderson@email.com",
+    birthday: "Mar 15, 1985",
+    preferences: "Blackjack, Roulette",
   },
   {
-    id: "2",
-    name: "Jane Smith",
-    email: "jane.smith@example.com",
-    phone: "+1234567891",
-    merchant: "MERCHANT_B",
-    currency: "EUR",
-    memberType: "VIP" as const,
-    totalDeposit: 75000,
-    lastActivity: "2024-01-14",
+    id: "VIP002",
+    name: "Maria Rodriguez",
+    tier: "Platinum",
+    totalDeposits: 85000,
+    currency: "SGD",
+    lastActivity: "2024-01-10",
+    status: "Active",
+    kam: "B",
+    phone: "+1-555-0124",
+    email: "maria.rodriguez@email.com",
+    birthday: "Jun 20, 1990",
+    preferences: "Poker, Slots",
+  },
+  {
+    id: "VIP003",
+    name: "David Kim",
+    tier: "Gold",
+    totalDeposits: 45000,
+    currency: "MYR",
+    lastActivity: "2023-12-20",
     status: "Inactive",
-    assignedKAM: "1",
+    kam: "A",
+    phone: "+1-555-0125",
+    email: "david.kim@email.com",
+    birthday: "Aug 10, 1988",
+    preferences: "Baccarat, Craps",
+  },
+  {
+    id: "VIP004",
+    name: "Lisa Wang",
+    tier: "Silver",
+    totalDeposits: 25000,
+    currency: "SGD",
+    lastActivity: "2024-01-12",
+    status: "Active",
+    kam: "C",
+    phone: "+1-555-0126",
+    email: "lisa.wang@email.com",
+    birthday: "Dec 5, 1992",
+    preferences: "Slots, Bingo",
+  },
+  {
+    id: "VIP005",
+    name: "Robert Smith",
+    tier: "Bronze",
+    totalDeposits: 15000,
+    currency: "MYR",
+    lastActivity: "2023-11-30",
+    status: "Dormant",
+    kam: "B",
+    phone: "+1-555-0127",
+    email: "robert.smith@email.com",
+    birthday: "Jan 20, 1980",
+    preferences: "Poker, Blackjack",
   },
 ]
 
-export default function VIPProfilePage() {
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedVIP, setSelectedVIP] = useState<(typeof mockVIPs)[0] | null>(null)
+export default function VIPProfiles() {
   const { user, loading, hasPermission, canAccessMerchant, canAccessCurrency } = useAuth()
+  
+  const [searchMemberName, setSearchMemberName] = useState("")
+  const [searchPlayerId, setSearchPlayerId] = useState("")
+  const [searchKAM, setSearchKAM] = useState("")
+  const [pendingMemberName, setPendingMemberName] = useState("")
+  const [pendingPlayerId, setPendingPlayerId] = useState("")
+  const [pendingKAM, setPendingKAM] = useState("")
+  const [players] = useState<VIPPlayer[]>(mockPlayers)
+  const [selectedTiers, setSelectedTiers] = useState<string[]>([])
+  const [selectedCurrencies, setSelectedCurrencies] = useState<string[]>([])
+  const [selectedMerchants, setSelectedMerchants] = useState<string[]>([])
+  const [pendingFilters, setPendingFilters] = useState({ tiers: [] as string[], currencies: [] as string[], merchants: [] as string[] })
+  const [birthdayRange, setBirthdayRange] = useState<DateRange | undefined>(undefined)
+  const [pendingBirthdayRange, setPendingBirthdayRange] = useState<DateRange | undefined>(undefined)
+  const [isTableLoading, setIsTableLoading] = useState(false)
 
   if (loading) {
     return (
@@ -70,17 +220,148 @@ export default function VIPProfilePage() {
     return <AccessDenied moduleName="VIP Profile Management" />
   }
 
-  // Filter VIPs based on user's access rights
-  const filteredVIPs = mockVIPs.filter((vip) => {
-    const matchesSearch =
-      vip.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      vip.email.toLowerCase().includes(searchTerm.toLowerCase())
-    const hasAccess =
-      canAccessMerchant(vip.merchant) &&
-      canAccessCurrency(vip.currency) &&
-      (user?.role === "ADMIN" || vip.assignedKAM === user?.id)
+  const columns: ColumnDef<VIPPlayer>[] = [
+    {
+      accessorKey: "id",
+      header: "Player ID",
+      enableSorting: true,
+    },
+    {
+      accessorKey: "name",
+      header: "Name",
+      enableSorting: true,
+      cell: ({ row }) => <div className="font-medium">{row.getValue("name")}</div>,
+    },
+    {
+      accessorKey: "tier",
+      header: "Tier",
+      enableSorting: true,
+      cell: ({ row }) => <TierBadge value={row.getValue("tier") as string} />,
+    },
+    {
+      accessorKey: "totalDeposits",
+      header: "Total Deposits",
+      enableSorting: true,
+      cell: ({ row }) => {
+        const amount = Number.parseFloat(row.getValue("totalDeposits"))
+        const currency = row.original.currency
+        const formatted = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: currency,
+        }).format(amount)
+        return <div className="font-medium">{formatted}</div>
+      },
+    },
+    {
+      accessorKey: "currency",
+      header: "Currency",
+      enableSorting: true,
+      cell: ({ row }) => <CurrencyBadge value={row.getValue("currency") as string} />,
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      enableSorting: true,
+      cell: ({ row }) => <PlayerStatusBadge value={row.getValue("status") as string} />,
+    },
+    {
+      accessorKey: "kam",
+      header: "KAM",
+      enableSorting: true,
+    },
+    {
+      accessorKey: "lastActivity",
+      header: "Last Activity",
+      enableSorting: true,
+    },
+    {
+      accessorKey: "phone",
+      header: "Phone",
+      enableSorting: true,
+    },
+    {
+      accessorKey: "birthday",
+      header: "Birthday",
+      enableSorting: true,
+      cell: ({ row }) => <div className="text-sm">{row.getValue("birthday")}</div>,
+    },
+    {
+      accessorKey: "preferences",
+      header: "Preferences",
+      enableSorting: true,
+      cell: ({ row }) => <div className="text-sm">{row.getValue("preferences")}</div>,
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      enableSorting: false,
+      cell: ({ row }) => {
+        const player = row.original
+        return (
+          <div className="flex space-x-2">
+            <PermissionGuard module="vip-profile" permission="VIEW">
+              <Link href={`/vip-profile/${player.id}`}>
+                <Button variant="ghost" size="sm">
+                  <Eye className="h-4 w-4" />
+                </Button>
+              </Link>
+            </PermissionGuard>
+            <PermissionGuard module="vip-profile" permission="EDIT">
+              <Button variant="ghost" size="sm">
+                <Edit className="h-4 w-4" />
+              </Button>
+            </PermissionGuard>
+            <PermissionGuard module="vip-profile" permission="EDIT">
+              <Button variant="ghost" size="sm">
+                <Phone className="h-4 w-4" />
+              </Button>
+            </PermissionGuard>
+            <PermissionGuard module="vip-profile" permission="EDIT">
+              <Button variant="ghost" size="sm">
+                <Gift className="h-4 w-4" />
+              </Button>
+            </PermissionGuard>
+          </div>
+        )
+      },
+    },
+  ]
 
-    return matchesSearch && hasAccess
+  // Filter VIPs based on user's access rights and search criteria
+  const filteredPlayers = players.filter((player) => {
+    // Text search filter
+    const matchesMemberName = searchMemberName === "" || player.name.toLowerCase().includes(searchMemberName.toLowerCase())
+    const matchesPlayerId = searchPlayerId === "" || player.id.toLowerCase().includes(searchPlayerId.toLowerCase())
+    const matchesKAM = searchKAM === "" || player.kam.toLowerCase().includes(searchKAM.toLowerCase())
+    
+    // Tier filter (multi-select)
+    const matchesTier = selectedTiers.length === 0 || selectedTiers.includes(player.tier)
+    
+    // Currency filter (multi-select)
+    const matchesCurrency = selectedCurrencies.length === 0 || selectedCurrencies.includes(player.currency)
+    
+    // KAM filter (multi-select)
+    const matchesKAMFilter = selectedMerchants.length === 0 || selectedMerchants.includes(player.kam)
+
+    // Birthday date range filter
+    const parseBirthdayToDate = (birthdayText: string) => new Date(birthdayText)
+    const playerBirthday = parseBirthdayToDate(player.birthday)
+    let matchesBirthdayRange = true
+    if (birthdayRange?.from && birthdayRange?.to) {
+      matchesBirthdayRange = playerBirthday >= birthdayRange.from && playerBirthday <= birthdayRange.to
+    } else if (birthdayRange?.from && !birthdayRange.to) {
+      matchesBirthdayRange = playerBirthday >= birthdayRange.from
+    } else if (!birthdayRange?.from && birthdayRange?.to) {
+      matchesBirthdayRange = playerBirthday <= birthdayRange.to
+    }
+
+    // Access control filter
+    const hasAccess =
+      canAccessMerchant(player.kam) &&
+      canAccessCurrency(player.currency) &&
+      (user?.role === "ADMIN" || player.kam === user?.id)
+    
+    return matchesMemberName && matchesPlayerId && matchesKAM && matchesTier && matchesCurrency && matchesKAMFilter && matchesBirthdayRange && hasAccess
   })
 
   return (
@@ -91,213 +372,200 @@ export default function VIPProfilePage() {
 
       <div className="flex-1 p-6">
         <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-              <Input
-                placeholder="Search VIPs by name or email..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-12 w-96 h-12 bg-white/80 border-gray-200 focus:bg-white shadow-sm transition-all duration-200"
-              />
-            </div>
+            <div>
+              <h1 className="text-4xl font-bold text-slate-900 mb-2">VIP Profile Module</h1>
+              <p className="text-slate-600">Player-centric dashboard - Full CRM card for each VIP player</p>
           </div>
-
           <PermissionGuard module="vip-profile" permission="ADD">
-            <Button className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 h-12 px-6">
-              <Plus className="h-5 w-5 mr-2" />
+              <Link href="/vip-profiles/new" className="cursor-pointer">
+                <Button className="bg-purple-600 hover:bg-purple-700 cursor-pointer">
+                  <Plus className="h-4 w-4 mr-2" />
               Add VIP Player
             </Button>
+              </Link>
           </PermissionGuard>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* VIP List */}
-          <div className="lg:col-span-1">
-            <Card className="glass-card hover-lift border-0 shadow-xl">
-              <CardHeader className="bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100">
-                <CardTitle className="flex items-center gap-2 text-emerald-800">
-                  <Users className="w-5 h-5" />
-                  VIP Players ({filteredVIPs.length})
-                </CardTitle>
+        {/* Search and Filters */}
+        <Card className="mb-6 border-0 shadow-lg">
+          <CardHeader>
+            <CardTitle>Search & Filter</CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
-                <div className="space-y-1 p-4 max-h-96 overflow-y-auto custom-scrollbar">
-                  {filteredVIPs.map((vip, index) => (
-                    <div
-                      key={vip.id}
-                      className={`p-4 rounded-xl border cursor-pointer transition-all duration-300 hover:scale-[1.02] ${
-                        selectedVIP?.id === vip.id
-                          ? "border-emerald-500 bg-gradient-to-r from-emerald-50 to-teal-50 shadow-lg"
-                          : "border-gray-200 hover:bg-gray-50 hover:shadow-md"
-                      }`}
-                      onClick={() => setSelectedVIP(vip)}
-                      style={{ animationDelay: `${index * 50}ms` }}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center shadow-lg">
-                            <span className="text-white font-bold text-sm">{vip.name.charAt(0).toUpperCase()}</span>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Search Fields Row */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <Label htmlFor="member-name-search">Member Name</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                    <Input
+                      id="member-name-search"
+                      placeholder="Search by member name..."
+                      value={pendingMemberName}
+                      onChange={(e) => setPendingMemberName(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
                           </div>
                           <div>
-                            <p className="font-semibold text-gray-900">{vip.name}</p>
-                            <p className="text-sm text-gray-500">{vip.email}</p>
+                  <Label htmlFor="player-id-search">Player ID</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                    <Input
+                      id="player-id-search"
+                      placeholder="Search by player ID..."
+                      value={pendingPlayerId}
+                      onChange={(e) => setPendingPlayerId(e.target.value)}
+                      className="pl-10"
+                    />
                           </div>
                         </div>
-                        <Badge
-                          variant={vip.status === "Active" ? "default" : "secondary"}
-                          className={
-                            vip.status === "Active"
-                              ? "bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0 shadow-sm"
-                              : "bg-gray-100 text-gray-600"
-                          }
-                        >
-                          {vip.status}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs border-emerald-200 text-emerald-700 bg-emerald-50">
-                          {vip.merchant}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs border-blue-200 text-blue-700 bg-blue-50">
-                          {vip.currency}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs border-purple-200 text-purple-700 bg-purple-50">
-                          ${vip.totalDeposit.toLocaleString()}
-                        </Badge>
+                <div>
+                  <Label htmlFor="kam-search">KAM</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                    <Input
+                      id="kam-search"
+                      placeholder="Search by KAM..."
+                      value={pendingKAM}
+                      onChange={(e) => setPendingKAM(e.target.value)}
+                      className="pl-10"
+                    />
                       </div>
                     </div>
-                  ))}
+                <div>
+                  <Label>Tier</Label>
+                  <MultiSelect
+                    options={[
+                      { value: "Diamond", label: "Diamond" },
+                      { value: "Platinum", label: "Platinum" },
+                      { value: "Gold", label: "Gold" },
+                      { value: "Silver", label: "Silver" },
+                      { value: "Bronze", label: "Bronze" },
+                    ]}
+                    selectedValues={pendingFilters.tiers}
+                    onSelectionChange={(vals) => setPendingFilters((p) => ({ ...p, tiers: vals }))}
+                    placeholder="Filter by Tier"
+                    label="Select Tiers"
+                  />
                 </div>
-              </CardContent>
-            </Card>
           </div>
 
-          {/* VIP Details */}
-          <div className="lg:col-span-2">
-            {selectedVIP ? (
-              <Card className="glass-card hover-lift border-0 shadow-xl">
-                <CardHeader className="bg-gradient-to-r from-blue-50 via-purple-50 to-indigo-50 border-b border-blue-100">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-xl">
-                        <span className="text-white font-bold text-xl">{selectedVIP.name.charAt(0).toUpperCase()}</span>
+              {/* Filter Fields Row */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <Label>Currency</Label>
+                  <MultiSelect
+                    options={[
+                      { value: "USD", label: "USD" },
+                      { value: "SGD", label: "SGD" },
+                      { value: "MYR", label: "MYR" },
+                    ]}
+                    selectedValues={pendingFilters.currencies}
+                    onSelectionChange={(vals) => setPendingFilters((p) => ({ ...p, currencies: vals }))}
+                    placeholder="Filter by Currency"
+                    label="Select Currencies"
+                  />
+                </div>
+                <div>
+                  <Label>Merchants Filter</Label>
+                  <MultiSelect
+                    options={[
+                      { value: "Alpha", label: "Alpha" },
+                      { value: "Beta", label: "Beta" },
+                    ]}
+                    selectedValues={pendingFilters.merchants}
+                    onSelectionChange={(vals) => setPendingFilters((p) => ({ ...p, merchants: vals }))}
+                    placeholder="Filter by Merchant"
+                    label="Select Merchant"
+                  />
                       </div>
                       <div>
-                        <CardTitle className="text-2xl gradient-text">{selectedVIP.name}</CardTitle>
-                        <CardDescription className="text-gray-600 flex items-center gap-2 mt-1">
-                          <Mail className="w-4 h-4" />
-                          {selectedVIP.email}
-                        </CardDescription>
+                  <Label>Birthday Range</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-between" aria-label="Select birthday date range">
+                        {pendingBirthdayRange?.from && pendingBirthdayRange?.to
+                          ? `${formatDateDDMMYYYY(pendingBirthdayRange.from)} - ${formatDateDDMMYYYY(pendingBirthdayRange.to)}`
+                          : "Select date range"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="range"
+                        selected={pendingBirthdayRange}
+                        onSelect={setPendingBirthdayRange}
+                        numberOfMonths={2}
+                        captionLayout="dropdown"
+                      />
+                    </PopoverContent>
+                  </Popover>
                       </div>
+                <div></div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <PermissionGuard module="vip-profile" permission="EDIT">
+
+              {/* Action Buttons Row */}
+              <div className="flex justify-end gap-2">
                         <Button
-                          variant="outline"
-                          size="sm"
-                          className="bg-white/80 border-blue-200 text-blue-700 hover:bg-blue-50 transition-all duration-200"
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit Profile
-                        </Button>
-                      </PermissionGuard>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="bg-white/80 border-green-200 text-green-700 hover:bg-green-50 transition-all duration-200"
-                      >
-                        <Phone className="h-4 w-4 mr-2" />
-                        Call Now
+                  onClick={() => {
+                    setSearchMemberName(pendingMemberName)
+                    setSearchPlayerId(pendingPlayerId)
+                    setSearchKAM(pendingKAM)
+                    setSelectedTiers(pendingFilters.tiers)
+                    setSelectedCurrencies(pendingFilters.currencies)
+                    setSelectedMerchants(pendingFilters.merchants)
+                    setBirthdayRange(pendingBirthdayRange)
+                    setIsTableLoading(true)
+                    setTimeout(() => setIsTableLoading(false), 500)
+                  }}
+                >
+                  Apply Filters
                       </Button>
                       <Button
                         variant="outline"
-                        size="sm"
-                        className="bg-white/80 border-purple-200 text-purple-700 hover:bg-purple-50 transition-all duration-200"
-                      >
-                        <Gift className="h-4 w-4 mr-2" />
-                        Send Gift
+                  onClick={() => {
+                    setPendingMemberName("")
+                    setPendingPlayerId("")
+                    setPendingKAM("")
+                    setPendingFilters({ tiers: [], currencies: [], merchants: [] })
+                    setPendingBirthdayRange(undefined)
+                    setSearchMemberName("")
+                    setSearchPlayerId("")
+                    setSearchKAM("")
+                    setSelectedTiers([])
+                    setSelectedCurrencies([])
+                    setSelectedMerchants([])
+                    setBirthdayRange(undefined)
+                    setIsTableLoading(true)
+                    setTimeout(() => setIsTableLoading(false), 300)
+                  }}
+                >
+                  Clear
                       </Button>
                     </div>
                   </div>
+          </CardContent>
+        </Card>
+
+        {/* Players Table */}
+        <Card className="border-0 shadow-lg">
+          <CardHeader>
+            <CardTitle>VIP Players ({filteredPlayers.length})</CardTitle>
+            <CardDescription>Manage your assigned VIP players and their engagement history</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Tabs defaultValue="profile" className="w-full">
-                    <TabsList className="grid w-full grid-cols-4">
-                      <TabsTrigger value="profile">Profile</TabsTrigger>
-                      <TabsTrigger value="activity">Activity</TabsTrigger>
-                      <TabsTrigger value="gifts">Gifts</TabsTrigger>
-                      <TabsTrigger value="notes">Notes</TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="profile" className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Phone</label>
-                          <p className="text-sm text-gray-600">{selectedVIP.phone}</p>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Merchant</label>
-                          <p className="text-sm text-gray-600">{selectedVIP.merchant}</p>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Currency</label>
-                          <p className="text-sm text-gray-600">{selectedVIP.currency}</p>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Total Deposit</label>
-                          <p className="text-sm text-gray-600 flex items-center">
-                            <DollarSign className="h-4 w-4 mr-1" />
-                            {selectedVIP.totalDeposit.toLocaleString()}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Last Activity</label>
-                          <p className="text-sm text-gray-600 flex items-center">
-                            <Calendar className="h-4 w-4 mr-1" />
-                            {selectedVIP.lastActivity}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Status</label>
-                          <Badge variant={selectedVIP.status === "Active" ? "default" : "secondary"}>
-                            {selectedVIP.status}
-                          </Badge>
-                        </div>
+            {isTableLoading ? (
+              <div className="space-y-3">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="h-10 bg-slate-200 rounded animate-pulse" />
+                ))}
                       </div>
-                    </TabsContent>
-
-                    <TabsContent value="activity">
-                      <div className="text-center py-8 text-gray-500">Activity timeline will be displayed here</div>
-                    </TabsContent>
-
-                    <TabsContent value="gifts">
-                      <div className="text-center py-8 text-gray-500">Gift history will be displayed here</div>
-                    </TabsContent>
-
-                    <TabsContent value="notes">
-                      <div className="text-center py-8 text-gray-500">Notes and remarks will be displayed here</div>
-                    </TabsContent>
-                  </Tabs>
-                </CardContent>
-              </Card>
             ) : (
-              <Card className="glass-card border-0 shadow-xl">
-                <CardContent className="flex items-center justify-center py-20">
-                  <div className="text-center">
-                    <div className="w-20 h-20 bg-gradient-to-r from-gray-200 to-gray-300 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg">
-                      <Users className="h-10 w-10 text-gray-400" />
-                    </div>
-                    <p className="text-gray-500 text-lg">Select a VIP player to view details</p>
-                    <p className="text-gray-400 text-sm mt-2">
-                      Choose from the list to see comprehensive profile information
-                    </p>
-                  </div>
+              <DataTable columns={columns} data={filteredPlayers} />
+            )}
                 </CardContent>
               </Card>
-            )}
-          </div>
-        </div>
       </div>
       </div>
     </div>
