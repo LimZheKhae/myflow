@@ -1,38 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
+import { SnowflakeFileUploader } from '@/lib/snowflake/file-upload'
 
-// Get file from stage (simulated - in real implementation you'd use GET command)
-async function getFileFromStage(filename: string, stageName: string = 'MY_STAGE') {
+// Get file from table
+async function getFileFromTable(filename: string) {
   try {
-    // In a real implementation, you would use the GET command
-    // GET @MY_STAGE/filename file:///tmp/;
-    
-    // For now, we'll just verify the file exists in the stage
-    const listSQL = `LIST @${stageName}/${filename}`
-    const result = await executeQuery(listSQL)
+    const selectSQL = `
+      SELECT 
+        USER_ID,
+        IMAGE_URL,
+        FILE_NAME,
+        UPLOADED_AT
+      FROM MY_FLOW.PUBLIC.IMAGES
+      WHERE FILE_NAME = ?
+    `
+    console.log('Executing query to get file from table 123:', selectSQL)
+    const result = await executeQuery(selectSQL, [filename])
     
     if (result.length === 0) {
-      throw new Error('File not found in stage')
+      throw new Error('File not found in table')
     }
     
-    console.log(`File ${filename} found in stage`)
-    return { success: true, message: 'File retrieved successfully' }
+    console.log(`File ${filename} found in table`)
+    return { success: true, message: 'File retrieved successfully', data: result[0] }
   } catch (error) {
-    console.error('Error getting file from stage:', error)
+    console.error('Error getting file from table:', error)
     throw error
   }
 }
 
-// Delete file from stage
-async function deleteFileFromStage(filename: string, stageName: string = 'MY_STAGE') {
+// Delete file from table and stage
+async function deleteFileFromTable(filename: string) {
   try {
-    const removeSQL = `REMOVE @${stageName}/${filename}`
-    await executeQuery(removeSQL)
+    // First delete from stage
+    const stageDeleteResult = await SnowflakeFileUploader.deleteFileFromStage(filename)
+    if (!stageDeleteResult.success) {
+      console.warn('Failed to delete from stage:', stageDeleteResult.error)
+    }
     
-    console.log(`File ${filename} removed from stage @${stageName}`)
+    // Then delete from table
+    const deleteSQL = `DELETE FROM MY_FLOW.PUBLIC.IMAGES WHERE FILE_NAME = ?`
+    await executeQuery(deleteSQL, [filename])
+    
+    console.log(`File ${filename} removed from table and stage`)
     return { success: true, message: 'File deleted successfully' }
   } catch (error) {
-    console.error('Error deleting file from stage:', error)
+    console.error('Error deleting file from table:', error)
     throw error
   }
 }
@@ -53,18 +66,18 @@ export async function GET(
     }
     
     try {
-      // Get file from stage
-      const result = await getFileFromStage(filename)
+      // Get file from table
+      const result = await getFileFromTable(filename)
       
-      return NextResponse.json({
-        success: true,
-        message: 'File fetched successfully from Snowflake stage',
-        data: {
-          filename,
-          snowflakePath: `@MY_STAGE/${filename}`,
-          status: 'fetched'
-        }
-      })
+        return NextResponse.json({
+         success: true,
+         message: 'File fetched successfully from Snowflake stage',
+         data: {
+           filename,
+           snowflakePath: `@MY_FLOW.PUBLIC.IMAGE_FILES/${filename}`,
+           status: 'fetched'
+         }
+       })
       
     } catch (error) {
       throw error
@@ -95,18 +108,18 @@ export async function DELETE(
     }
     
     try {
-      // Delete file from stage
-      const result = await deleteFileFromStage(filename)
+      // Delete file from table
+      const result = await deleteFileFromTable(filename)
       
-      return NextResponse.json({
-        success: true,
-        message: 'File deleted successfully from Snowflake stage',
-        data: {
-          filename,
-          snowflakePath: `@MY_STAGE/${filename}`,
-          status: 'deleted'
-        }
-      })
+             return NextResponse.json({
+         success: true,
+         message: 'File deleted successfully from Snowflake stage',
+         data: {
+           filename,
+           snowflakePath: `@MY_FLOW.PUBLIC.IMAGE_FILES/${filename}`,
+           status: 'deleted'
+         }
+       })
       
     } catch (error) {
       throw error

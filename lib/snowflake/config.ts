@@ -1,10 +1,15 @@
 import snowflake from 'snowflake-sdk'
+import dotenv from 'dotenv'
+
+// Load environment variables
+dotenv.config({ path: '.env.local' })
 
 export interface SnowflakeConfig {
   account: string
   username: string
   database: string
   warehouse: string
+  role: string
   privateKey: string
 }
 
@@ -14,6 +19,7 @@ export const getSnowflakeConfig = (): SnowflakeConfig => {
     username: process.env.SNOWFLAKE_USERNAME,
     database: process.env.SNOWFLAKE_DATABASE,
     warehouse: process.env.SNOWFLAKE_WAREHOUSE,
+    role: process.env.SNOWFLAKE_ROLE,
     privateKey: process.env.SNOWFLAKE_PRIVATE_KEY,
   }
 
@@ -41,6 +47,7 @@ export const createSnowflakeConnection = (): Promise<snowflake.Connection> => {
     username: config.username,
     database: config.database,
     warehouse: config.warehouse,
+    role: config.role,
     authenticator: 'SNOWFLAKE_JWT',
     privateKey: privateKey,
     clientSessionKeepAlive: true,

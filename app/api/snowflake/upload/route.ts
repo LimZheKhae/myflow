@@ -1,22 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSnowflakeConnection, executeQuery } from '@/lib/snowflake/config'
-
-// Create stage if it doesn't exist
-async function createStage(stageName: string = 'MY_STAGE') {
-  try {
-    const createStageSQL = `
-      CREATE STAGE IF NOT EXISTS ${stageName}
-      FILE_FORMAT = (TYPE = 'AUTO')
-      COMMENT = 'Stage for file uploads from web application'
-    `
-    
-    await executeQuery(createStageSQL)
-    console.log(`Stage ${stageName} created/verified successfully`)
-  } catch (error) {
-    console.error('Error creating stage:', error)
-    throw error
-  }
-}
+import { executeQuery } from '@/lib/snowflake/config'
+import { SnowflakeFileUploader } from '@/lib/snowflake/file-upload'
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,9 +32,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    try {
-      // Create stage
-      await createStage()
+         try {
       
       // Generate unique filename
       const timestamp = Date.now()
@@ -60,13 +42,37 @@ export async function POST(request: NextRequest) {
       // Convert file to buffer
       const fileBuffer = Buffer.from(await file.arrayBuffer())
       
-      // In a real implementation, you would upload the file to Snowflake stage
-      // For now, we'll simulate the upload and store metadata
+      // Upload file to Snowflake stage using SQL PUT command
+      console.log(`Uploading file ${uniqueFilename} to Snowflake stage...`)
+      const uploadResult = await SnowflakeFileUploader.uploadFileToStage(fileBuffer, uniqueFilename)
+      
+      if (!uploadResult.success) {
+        console.error('File upload failed:', uploadResult.error)
+        return NextResponse.json(
+          { error: 'Failed to upload file to Snowflake stage', details: uploadResult.error },
+          { status: 500 }
+        )
+      }
+      
+      console.log('File uploaded successfully to stage:', uploadResult.message)
       
       // Simulate upload delay
       await new Promise(resolve => setTimeout(resolve, 1000))
       
-      // Store file metadata (in a real app, you'd store this in a database)
+      // For demo purposes, using user ID 1, in real app you'd get this from auth context
+      const userId = 1
+      
+      // Use our own file serving endpoint instead of Snowflake URL
+      const imageUrl = `/api/snowflake/files/serve/${uniqueFilename}`
+      
+      // Store file metadata in Snowflake table
+      const insertSQL = `
+        INSERT INTO MY_FLOW.PUBLIC.IMAGES (USER_ID, IMAGE_URL, FILE_NAME)
+        VALUES (?, ?, ?)
+      `
+      
+      await executeQuery(insertSQL, [userId, imageUrl, uniqueFilename])
+      
       const fileMetadata = {
         id: `file_${timestamp}`,
         filename: uniqueFilename,
@@ -74,7 +80,8 @@ export async function POST(request: NextRequest) {
         size: file.size,
         type: file.type,
         uploadedAt: new Date().toISOString(),
-        snowflakePath: `@MY_STAGE/${uniqueFilename}`,
+        snowflakePath: `@MY_FLOW.PUBLIC.IMAGE_FILES/${uniqueFilename}`,
+        imageUrl: imageUrl,
         status: 'uploaded'
       }
       

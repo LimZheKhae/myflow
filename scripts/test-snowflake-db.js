@@ -9,7 +9,7 @@ const account = process.env.SNOWFLAKE_ACCOUNT;
 const username = process.env.SNOWFLAKE_USERNAME;
 const database = process.env.SNOWFLAKE_DATABASE;
 const warehouse = process.env.SNOWFLAKE_WAREHOUSE;
-const role = process.env.SNOWFLAKE_ROLE || 'PUBLIC';
+const role = process.env.SNOWFLAKE_ROLE;
 const privateKey = process.env.SNOWFLAKE_PRIVATE_KEY;
 
 // Validate configuration
@@ -28,6 +28,7 @@ if (!username) missingFields.push('SNOWFLAKE_USERNAME');
 if (!database) missingFields.push('SNOWFLAKE_DATABASE');
 if (!warehouse) missingFields.push('SNOWFLAKE_WAREHOUSE');
 if (!privateKey) missingFields.push('SNOWFLAKE_PRIVATE_KEY');
+if (!role) missingFields.push('SNOWFLAKE_ROLE');
 
 if (missingFields.length > 0) {
   console.error('\n❌ Missing required environment variables:', missingFields.join(', '));

@@ -44,12 +44,12 @@ export default function TestImageUpload() {
             // Convert Snowflake file data to our UploadedImage format
             const existingImages: UploadedImage[] = result.data.files.map((file: any) => ({
               id: `file_${Date.now()}_${Math.random()}`,
-              filename: file.name,
-              size: file.size || 0,
+              filename: file.FILE_NAME,
+              size: 0, // Size not stored in table, could be added if needed
               type: 'image/jpeg', // Default type since Snowflake doesn't store MIME type
-              uploadedAt: file.last_modified || new Date().toISOString(),
-              snowflakePath: `@MY_STAGE/${file.name}`,
-              previewUrl: undefined // No preview for existing files
+              uploadedAt: file.UPLOADED_AT ? new Date(file.UPLOADED_AT).toISOString() : new Date().toISOString(),
+              snowflakePath: `@MY_FLOW.PUBLIC.IMAGE_FILES/${file.FILE_NAME}`,
+              previewUrl: `/api/snowflake/files/serve/${file.FILE_NAME}` // Use our own file serving endpoint
             }))
             setUploadedImages(existingImages)
           }
@@ -382,7 +382,7 @@ export default function TestImageUpload() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="p-4 bg-green-50 rounded-lg border border-green-200">
                   <h4 className="font-medium text-green-900 mb-2">Stage Name</h4>
-                  <p className="text-green-800 font-mono">@MY_STAGE</p>
+                  <p className="text-green-800 font-mono">@MY_FLOW.PUBLIC.IMAGE_FILES</p>
                 </div>
                 <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                   <h4 className="font-medium text-blue-900 mb-2">File Format</h4>
@@ -398,11 +398,11 @@ export default function TestImageUpload() {
                 <h4 className="font-medium text-slate-900 mb-2">SQL Commands for Testing:</h4>
                 <div className="space-y-2 text-sm font-mono text-slate-700">
                   <p>-- List files in stage</p>
-                  <p className="bg-slate-200 px-2 py-1 rounded">LIST @MY_STAGE;</p>
+                  <p className="bg-slate-200 px-2 py-1 rounded">LIST @MY_FLOW.PUBLIC.IMAGE_FILES;</p>
                   <p>-- Get file metadata</p>
-                  <p className="bg-slate-200 px-2 py-1 rounded">SELECT METADATA$FILENAME, METADATA$FILE_SIZE FROM @MY_STAGE;</p>
+                  <p className="bg-slate-200 px-2 py-1 rounded">SELECT METADATA$FILENAME, METADATA$FILE_SIZE FROM @MY_FLOW.PUBLIC.IMAGE_FILES;</p>
                   <p>-- Download file from stage</p>
-                  <p className="bg-slate-200 px-2 py-1 rounded">GET @MY_STAGE/filename.jpg file:///tmp/;</p>
+                  <p className="bg-slate-200 px-2 py-1 rounded">GET @MY_FLOW.PUBLIC.IMAGE_FILES/filename.jpg file:///tmp/;</p>
                 </div>
               </div>
             </CardContent>
