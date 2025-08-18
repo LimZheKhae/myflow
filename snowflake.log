@@ -31,3 +31,4 @@
 {"level":"INFO","message":"[3:03:01.940 PM]: No config file path found. Client config will not be used."}
 {"level":"INFO","message":"[3:03:01.940 PM]: Easy Logging is disabled as no config has been found"}
 {"level":"INFO","message":"[3:03:01.943 PM]: Connection[id: 6ade0d63-c0cf-4d68-8428-ad66a6297186] - connected successfully after 14.539499999999975 milliseconds"}
+{"level":"INFO","message":"[11:08:12.121 AM]: Creating new connection object"}

@@ -16,8 +16,7 @@ import { TierBadge, PlayerStatusBadge, CurrencyBadge } from "@/components/field-
 import { Label } from "@/components/ui/label"
 import { DataTable } from "@/components/ui/data-table"
 import { MultiSelect } from "@/components/ui/multi-select"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Calendar } from "@/components/ui/calendar"
+import DateRangePicker from "@/components/date-range-picker"
 import type { DateRange } from "react-day-picker"
 import type { ColumnDef } from "@tanstack/react-table"
 import Link from "next/link"
@@ -370,7 +369,7 @@ export default function VIPProfiles() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header title="VIP Profile Management" description="Manage individual VIP player profiles and activities" />
 
-      <div className="flex-1 p-6">
+      <div className="flex-1 p-6 overflow-y-auto">
         <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-4xl font-bold text-slate-900 mb-2">VIP Profile Module</h1>
@@ -467,8 +466,8 @@ export default function VIPProfiles() {
                     placeholder="Filter by Currency"
                     label="Select Currencies"
                   />
-                </div>
-                <div>
+                      </div>
+                      <div>
                   <Label>Merchants Filter</Label>
                   <MultiSelect
                     options={[
@@ -481,33 +480,21 @@ export default function VIPProfiles() {
                     label="Select Merchant"
                   />
                       </div>
-                      <div>
-                  <Label>Birthday Range</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-between" aria-label="Select birthday date range">
-                        {pendingBirthdayRange?.from && pendingBirthdayRange?.to
-                          ? `${formatDateDDMMYYYY(pendingBirthdayRange.from)} - ${formatDateDDMMYYYY(pendingBirthdayRange.to)}`
-                          : "Select date range"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="range"
-                        selected={pendingBirthdayRange}
-                        onSelect={setPendingBirthdayRange}
-                        numberOfMonths={2}
-                        captionLayout="dropdown"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                      </div>
+                                              <div>
+                          <Label>Birthday Range</Label>
+                          <DateRangePicker
+                            date={pendingBirthdayRange}
+                            onDateChange={setPendingBirthdayRange}
+                            placeholder="Pick a birthday range"
+                            formatDate={formatDateDDMMYYYY}
+                          />
+                        </div>
                 <div></div>
                     </div>
 
               {/* Action Buttons Row */}
               <div className="flex justify-end gap-2">
-                        <Button
+                      <Button
                   onClick={() => {
                     setSearchMemberName(pendingMemberName)
                     setSearchPlayerId(pendingPlayerId)

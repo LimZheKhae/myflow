@@ -1780,7 +1780,7 @@ export default function Gifts() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header title="Gift Approval System" description="Manage gift requests and approval workflow" />
 
-      <div className="flex-1 p-6">
+      <div className="flex-1 p-6 overflow-y-auto">
 
           {/* Header */}
           <div className="mb-8">

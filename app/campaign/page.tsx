@@ -20,8 +20,7 @@ import { TierBadge, PlayerStatusBadge, CallOutcomeBadge, CurrencyBadge } from "@
 import { Plus, Eye, Play, Pause, BarChart3, Search, Filter, Users, Target, BarChart, LineChart, PieChart, TrendingUp, Calendar as CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDateRangeLabel, formatDateISO } from "@/lib/utils";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import DateRangePicker from "@/components/date-range-picker";
 import type { DateRange } from "react-day-picker";
 import type { ColumnDef } from "@tanstack/react-table";
 
@@ -939,7 +938,7 @@ export default function Campaigns() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header title="Campaign Management" description="Manage VIP retention, reactivation, and engagement campaigns" />
 
-      <div className="flex-1 p-6">
+      <div className="flex-1 p-6 overflow-y-auto">
 
           {/* Header */}
           <div className="mb-8">
@@ -971,23 +970,11 @@ export default function Campaigns() {
                     </div>
                     <div className="col-span-1 md:col-span-2">
                       <Label>Campaign Date Range *</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" className="w-full justify-between" aria-label="Select campaign date range">
-                            {formatDateRangeLabel(pendingNewCampaignRange)}
-                            <CalendarIcon className="h-4 w-4 opacity-60" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="range"
-                            selected={pendingNewCampaignRange}
-                            onSelect={(range) => setPendingNewCampaignRange(range)}
-                            numberOfMonths={2}
-                            captionLayout="dropdown"
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <DateRangePicker
+                        date={pendingNewCampaignRange}
+                        onDateChange={(range) => setPendingNewCampaignRange(range)}
+                        placeholder="Select campaign date range"
+              />
             </div>
 
                     <div>
