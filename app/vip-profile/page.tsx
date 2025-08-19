@@ -480,7 +480,7 @@ export default function VIPProfiles() {
                     label="Select Merchant"
                   />
                       </div>
-                                              <div>
+                      <div>
                           <Label>Birthday Range</Label>
                           <DateRangePicker
                             date={pendingBirthdayRange}
@@ -488,13 +488,13 @@ export default function VIPProfiles() {
                             placeholder="Pick a birthday range"
                             formatDate={formatDateDDMMYYYY}
                           />
-                        </div>
+                      </div>
                 <div></div>
                     </div>
 
               {/* Action Buttons Row */}
               <div className="flex justify-end gap-2">
-                      <Button
+                        <Button
                   onClick={() => {
                     setSearchMemberName(pendingMemberName)
                     setSearchPlayerId(pendingPlayerId)

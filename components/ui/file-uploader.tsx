@@ -12,6 +12,7 @@ interface FileUploaderProps {
   multiple?: boolean;
   className?: string;
   placeholder?: string;
+  disabled?: boolean;
 }
 
 export const FileUploader: React.FC<FileUploaderProps> = ({
@@ -20,7 +21,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
   maxSize = 10, // 10MB default
   multiple = false,
   className,
-  placeholder = "Drag and drop files here, or click to browse"
+  placeholder = "Drag and drop files here, or click to browse",
+  disabled = false
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -142,15 +144,17 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       {!selectedFile ? (
         <div
           className={cn(
-            "border-2 border-dashed rounded-lg p-6 text-center transition-all duration-200 cursor-pointer",
-            isDragOver
-              ? "border-blue-500 bg-blue-50"
-              : "border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+            "border-2 border-dashed rounded-lg p-6 text-center transition-all duration-200",
+            disabled 
+              ? "border-gray-200 bg-gray-50 cursor-not-allowed opacity-50"
+              : isDragOver
+                ? "border-blue-500 bg-blue-50 cursor-pointer"
+                : "border-gray-300 hover:border-gray-400 hover:bg-gray-50 cursor-pointer"
           )}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onClick={handleBrowseClick}
+          onDrop={disabled ? undefined : handleDrop}
+          onDragOver={disabled ? undefined : handleDragOver}
+          onDragLeave={disabled ? undefined : handleDragLeave}
+          onClick={disabled ? undefined : handleBrowseClick}
         >
           <Upload className="h-12 w-12 mx-auto text-gray-400 mb-4" />
           <p className="text-sm text-gray-600 mb-2">{placeholder}</p>

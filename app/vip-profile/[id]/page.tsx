@@ -42,7 +42,6 @@ import {
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { Toaster } from "@/components/ui/sonner"
 
 export default function VIPPlayerProfile({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = React.use(params)
@@ -282,8 +281,7 @@ export default function VIPPlayerProfile({ params }: { params: Promise<{ id: str
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header title="VIP Profile Management" description="Manage individual VIP player profiles and activities" />
         
-        <div className="flex-1 p-6">
-          <Toaster />
+        <div className="flex-1 p-6 overflow-y-auto">
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center space-x-4 mb-4">
