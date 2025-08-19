@@ -18,7 +18,6 @@ export const ENHANCED_RBAC_ROLES: RoleDefinition[] = [
           { action: "DELETE", allowed: true },
           { action: "IMPORT", allowed: true },
           { action: "EXPORT", allowed: true },
-
         ],
         dataAccess: [
           { field: "personal_info", access: "FULL" },
