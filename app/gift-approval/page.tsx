@@ -1,5 +1,5 @@
 "use client";
-
+import Image from "next/image";
 import { useState, useEffect } from "react";
 import { useFirebaseAuth as useAuth } from "@/contexts/firebase-auth-context";
 import FirebaseLoginForm from "@/components/auth/firebase-login-form";
@@ -24,10 +24,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { exportToCSV, formatMoney } from "@/lib/utils";
+import { exportToCSV, formatMoney, getImageProxyUrl, getImageDownloadUrl } from "@/lib/utils";
 import { FileUploader } from "@/components/ui/file-uploader";
 
 import type { GiftRequestDetails, GiftCategory, WorkflowStatus, TrackingStatus, GiftRequestForm } from "@/types/gift";
+import { assignedVIPPlayers, getVIPPlayerById } from "@/lib/vip-players";
 
 // Helper function to convert date strings to Date objects
 const convertDatesInGifts = (gifts: any[]): GiftRequestDetails[] => {
@@ -40,35 +41,36 @@ const convertDatesInGifts = (gifts: any[]): GiftRequestDetails[] => {
   }));
 };
 
-// API functions
-const fetchGifts = async (params?: { page?: number; limit?: number; workflowStatus?: WorkflowStatus; category?: GiftCategory; kamRequestedBy?: string; memberLogin?: string; dateFrom?: string; dateTo?: string; search?: string }) => {
-  try {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.append("page", params.page.toString());
-    if (params?.limit) searchParams.append("limit", params.limit.toString());
-    if (params?.workflowStatus) searchParams.append("workflowStatus", params.workflowStatus);
-    if (params?.category) searchParams.append("category", params.category);
-    if (params?.kamRequestedBy) searchParams.append("kamRequestedBy", params.kamRequestedBy);
-    if (params?.memberLogin) searchParams.append("memberLogin", params.memberLogin);
-    if (params?.dateFrom) searchParams.append("dateFrom", params.dateFrom);
-    if (params?.dateTo) searchParams.append("dateTo", params.dateTo);
-    if (params?.search) searchParams.append("search", params.search);
+  // API functions
+  const fetchGifts = async (params?: { workflowStatus?: WorkflowStatus; category?: GiftCategory; kamRequestedBy?: string; memberLogin?: string; dateFrom?: string; dateTo?: string; search?: string }) => {
+    try {
+      const searchParams = new URLSearchParams();
+      // Remove pagination parameters - we'll fetch all data
+      if (params?.workflowStatus) searchParams.append("workflowStatus", params.workflowStatus);
+      if (params?.category) searchParams.append("category", params.category);
+      if (params?.kamRequestedBy) searchParams.append("kamRequestedBy", params.kamRequestedBy);
+      if (params?.memberLogin) searchParams.append("memberLogin", params.memberLogin);
+      if (params?.dateFrom) searchParams.append("dateFrom", params.dateFrom);
+      if (params?.dateTo) searchParams.append("dateTo", params.dateTo);
+      if (params?.search) searchParams.append("search", params.search);
 
-    const response = await fetch(`/api/gift-approval?${searchParams.toString()}`);
-    const data = await response.json();
+      const response = await fetch(`/api/gift-approval?${searchParams.toString()}`);
+      const data = await response.json();
 
-    if (!data.success) {
-      throw new Error(data.message || "Failed to fetch gifts");
+      if (!data.success) {
+        throw new Error(data.message || "Failed to fetch gifts");
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error fetching gifts:", error);
+      throw error;
     }
+  };
 
-    return data;
-  } catch (error) {
-    console.error("Error fetching gifts:", error);
-    throw error;
-  }
-};
 
-const performBulkAction = async (action: string, giftIds: number[], params: any, userEmail: string) => {
+
+const performBulkAction = async (action: string, giftIds: number[], params: any, userId: string) => {
   try {
     const response = await fetch("/api/gift-approval/bulk-actions", {
       method: "PUT",
@@ -78,7 +80,7 @@ const performBulkAction = async (action: string, giftIds: number[], params: any,
       body: JSON.stringify({
         action,
         giftIds,
-        uploadedBy: userEmail,
+        uploadedBy: userId,
         ...params,
       }),
     });
@@ -139,14 +141,17 @@ export default function Gifts() {
     trackingCode: "",
     trackingStatus: "Pending",
     mktOpsProof: null as File | null,
+    existingMktProofUrl: null as string | null,
   });
   const [kamProofGiftId, setKAMProofGiftId] = useState<number | null>(null);
   const [kamProofForm, setKAMProofForm] = useState({
     kamProof: null as File | null,
     giftFeedback: "",
+    existingKamProofUrl: null as string | null,
   });
   const [auditGiftId, setAuditGiftId] = useState<number | null>(null);
   const [auditRemark, setAuditRemark] = useState("");
+  const [auditCheckerName, setAuditCheckerName] = useState("");
 
   // Form states
   const [mktopsForm, setMktopsForm] = useState({
@@ -165,6 +170,8 @@ export default function Gifts() {
 
   const [requestForm, setRequestForm] = useState<GiftRequestForm>({
     vipId: "",
+    memberName: "",
+    memberLogin: "",
     giftItem: "",
     rewardName: "",
     rewardClubOrder: "",
@@ -182,6 +189,29 @@ export default function Gifts() {
   const canImportGifts = hasPermission("gift-approval", "IMPORT");
   const canExportGifts = hasPermission("gift-approval", "EXPORT");
 
+  // Reusable function to refresh the gifts data
+  const refreshGiftsData = async () => {
+    try {
+      setApiLoading(true); // Show skeleton animation during refresh
+      const result = await fetchGifts({
+        search: searchTerm,
+        // Remove workflowStatus filter - fetch all data
+      });
+      setGifts(convertDatesInGifts(result.data));
+      // Update pagination info based on new data
+      setPagination((prev) => ({
+        ...prev,
+        total: result.data.length,
+        totalPages: Math.ceil(result.data.length / prev.limit),
+      }));
+    } catch (error) {
+      console.error("Error refreshing gifts data:", error);
+      toast.error("Failed to refresh data");
+    } finally {
+      setApiLoading(false); // Hide skeleton animation after refresh
+    }
+  };
+
   // Load gifts data - fetch all data once, then filter client-side
   useEffect(() => {
     const loadGifts = async () => {
@@ -189,11 +219,9 @@ export default function Gifts() {
 
       try {
         setApiLoading(true);
-        // Always fetch all gifts without workflow status filter
+        // Always fetch all gifts without pagination limits
         // When searching, we want to search across all workflow statuses
         const result = await fetchGifts({
-          page: pagination.page,
-          limit: pagination.limit,
           search: searchTerm,
           // Never send workflowStatus filter - always fetch all data
           // This allows searching across all tabs and workflow statuses
@@ -202,8 +230,8 @@ export default function Gifts() {
         setGifts(convertDatesInGifts(result.data));
         setPagination((prev) => ({
           ...prev,
-          total: result.pagination.total,
-          totalPages: result.pagination.totalPages,
+          total: result.data.length, // Use actual data length instead of pagination total
+          totalPages: Math.ceil(result.data.length / pagination.limit),
         }));
       } catch (error) {
         console.error("Error loading gifts:", error);
@@ -214,12 +242,19 @@ export default function Gifts() {
     };
 
     loadGifts();
-  }, [user, pagination.page, pagination.limit, searchTerm]); // Removed activeTab dependency
+  }, [user, searchTerm]); // Removed pagination.page, pagination.limit, and activeTab dependencies
 
   // Clear row selection when tab changes
   const handleTabChange = (value: string) => {
     setActiveTab(value);
     setRowSelection({});
+    // Reset to first page when changing tabs
+    setPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    setPagination(prev => ({ ...prev, page: newPage }));
   };
 
   // Handle workflow step clicks with toast guidance
@@ -314,10 +349,20 @@ export default function Gifts() {
 
   // Handle form changes
   const handleFormChange = (field: string, value: string) => {
-    setRequestForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setRequestForm((prev) => {
+      const newForm = { ...prev, [field]: value };
+      
+      // If vipId is being changed, automatically populate memberName and memberLogin
+      if (field === "vipId" && value) {
+        const selectedVIP = getVIPPlayerById(value);
+        if (selectedVIP) {
+          newForm.memberName = selectedVIP.memberName;
+          newForm.memberLogin = selectedVIP.memberLogin;
+        }
+      }
+      
+      return newForm;
+    });
   };
 
   // Handle gift request submission
@@ -328,7 +373,7 @@ export default function Gifts() {
     }
 
     // Validate all required fields
-    if (!requestForm.vipId || !requestForm.giftItem || !requestForm.value || !requestForm.remark || !requestForm.category) {
+    if (!requestForm.vipId || !requestForm.giftItem || !requestForm.value || !requestForm.category) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -348,6 +393,8 @@ export default function Gifts() {
         },
         body: JSON.stringify({
           vipId: parseInt(requestForm.vipId),
+          memberName: requestForm.memberName,
+          memberLogin: requestForm.memberLogin,
           giftItem: requestForm.giftItem,
           rewardName: requestForm.rewardName || null,
           rewardClubOrder: requestForm.rewardClubOrder || null,
@@ -355,7 +402,9 @@ export default function Gifts() {
           costVnd: null,
           remark: requestForm.remark,
           category: requestForm.category,
-          kamRequestedBy: user?.email || "unknown",
+          userId: user?.id!,
+          userRole: user?.role!,
+          userPermissions: user?.permissions!,
         }),
       });
 
@@ -366,12 +415,14 @@ export default function Gifts() {
       }
 
       toast.success("Gift request submitted successfully!", {
-        description: `Request ID: ${data.data.giftId} has been created and moved to Manager Review.`,
+        description: `Gift request has been created and moved to Manager Review.`,
       });
 
       // Reset form
       setRequestForm({
         vipId: "",
+        memberName: "",
+        memberLogin: "",
         giftItem: "",
         rewardName: "",
         rewardClubOrder: "",
@@ -382,30 +433,15 @@ export default function Gifts() {
 
       // Close modal
       setIsRequestModalOpen(false);
-
-      // Reload data - fetch all data without workflow status filter
-      const result = await fetchGifts({
-        page: pagination.page,
-        limit: pagination.limit,
-        search: searchTerm,
-        // Remove workflowStatus filter - fetch all data
-      });
-      setGifts(convertDatesInGifts(result.data));
+      await refreshGiftsData();
     } catch (error) {
       console.error("Error creating gift request:", error);
       toast.error("Failed to create gift request");
     }
   };
 
-  // Mock VIP players assigned to this KAM account (in a real app, this would come from an API)
-  const assignedVIPPlayers = [
-    { id: "1", name: "John Anderson", login: "john.anderson" },
-    { id: "2", name: "Maria Rodriguez", login: "maria.rodriguez" },
-    { id: "3", name: "David Kim", login: "david.kim" },
-    { id: "4", name: "Lisa Wang", login: "lisa.wang" },
-    { id: "5", name: "Robert Brown", login: "robert.brown" },
-    { id: "6", name: "Emma Davis", login: "emma.davis" },
-  ];
+  // VIP players assigned to this KAM account (using hardcoded data until database is ready)
+  // const assignedVIPPlayers is now imported from lib/vip-players.ts
 
   // Bulk action handlers
   const handleBulkApprove = async () => {
@@ -432,21 +468,14 @@ export default function Gifts() {
         "approve",
         selectedGiftIds,
         {
-          workflowStatus: "MKTOps_Processing",
+          targetStatus: "MKTOps_Processing", // Pass target status from frontend
         },
-        user?.email || "unknown"
+        user?.id || "unknown"
       );
 
       toast.success(`Approved ${selectedGiftIds.length} gifts`);
       setRowSelection({});
-      // Reload data - fetch all data without workflow status filter
-      const result = await fetchGifts({
-        page: pagination.page,
-        limit: pagination.limit,
-        search: searchTerm,
-        // Remove workflowStatus filter - fetch all data
-      });
-      setGifts(convertDatesInGifts(result.data));
+      await refreshGiftsData();
     } catch (error) {
       toast.error("Failed to approve gifts");
     }
@@ -476,21 +505,15 @@ export default function Gifts() {
         "reject",
         selectedGiftIds,
         {
+          targetStatus: "Rejected", // Pass target status from frontend
           reason: "Bulk rejection - does not meet criteria",
         },
-        user?.email || "unknown"
+        user?.id || "unknown"
       );
 
       toast.success(`Rejected ${selectedGiftIds.length} gifts`);
       setRowSelection({});
-      // Reload data - fetch all data without workflow status filter
-      const result = await fetchGifts({
-        page: pagination.page,
-        limit: pagination.limit,
-        search: searchTerm,
-        // Remove workflowStatus filter - fetch all data
-      });
-      setGifts(convertDatesInGifts(result.data));
+      await refreshGiftsData();
     } catch (error) {
       toast.error("Failed to reject gifts");
     }
@@ -504,25 +527,30 @@ export default function Gifts() {
     }
 
     try {
-      await performBulkAction(
-        "approve",
-        [giftId],
-        {
-          workflowStatus: "MKTOps_Processing",
+      const response = await fetch("/api/gift-approval/update", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
         },
-        user?.email || "unknown"
-      );
+        body: JSON.stringify({
+          giftId,
+          tab: "pending",
+          action: "approve",
+          targetStatus: "MKTOps_Processing", // Pass target status from frontend
+          userId: user?.id || "unknown",
+          userRole: user?.role || "",
+          userPermissions: user?.permissions || {},
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || "Failed to approve gift");
+      }
 
       toast.success("Gift approved successfully");
-
-      // Reload data - fetch all data without workflow status filter
-      const result = await fetchGifts({
-        page: pagination.page,
-        limit: pagination.limit,
-        search: searchTerm,
-        // Remove workflowStatus filter - fetch all data
-      });
-      setGifts(convertDatesInGifts(result.data));
+      await refreshGiftsData();
     } catch (error) {
       toast.error("Failed to approve gift");
     }
@@ -535,28 +563,34 @@ export default function Gifts() {
     }
 
     try {
-      await performBulkAction(
-        "reject",
-        [giftId],
-        {
-          reason: reason,
+      const response = await fetch("/api/gift-approval/update", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
         },
-        user?.email || "unknown"
-      );
+        body: JSON.stringify({
+          giftId,
+          tab: "pending",
+          action: "reject",
+          targetStatus: "Rejected", // Pass target status from frontend
+          userId: user?.id || "unknown",
+          userRole: user?.role || "",
+          userPermissions: user?.permissions || {},
+          rejectReason: reason,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || "Failed to reject gift");
+      }
 
       toast.success("Gift rejected successfully");
       setRejectReason("");
       setIsRejectModalOpen(false);
       setRejectingGiftId(null);
-
-      // Reload data - fetch all data without workflow status filter
-      const result = await fetchGifts({
-        page: pagination.page,
-        limit: pagination.limit,
-        search: searchTerm,
-        // Remove workflowStatus filter - fetch all data
-      });
-      setGifts(convertDatesInGifts(result.data));
+      await refreshGiftsData();
     } catch (error) {
       toast.error("Failed to reject gift");
     }
@@ -569,39 +603,54 @@ export default function Gifts() {
     }
 
     try {
-      // If there's an image file, upload it first
+      // If there's an image file, upload it using the API endpoint
       let mktProofUrl = null;
       if (mktOpsProof) {
+        toast.info("Uploading image to Snowflake...");
+        
         const formData = new FormData();
         formData.append("file", mktOpsProof);
-        formData.append("module", "gift-approval");
-        formData.append("uploadedBy", user?.email || "unknown");
+        formData.append("giftId", giftId.toString());
+        formData.append("uploadType", "mkt-proof");
 
-        const uploadResponse = await fetch("/api/upload", {
+        const uploadResponse = await fetch("/api/gift-approval/upload-image", {
           method: "POST",
           body: formData,
         });
 
         const uploadData = await uploadResponse.json();
-        if (uploadData.success) {
-          mktProofUrl = uploadData.fileUrl;
-        } else {
-          throw new Error("Failed to upload MKTOps proof image");
+        if (!uploadData.success) {
+          throw new Error(uploadData.message || "Failed to upload image");
         }
+
+        mktProofUrl = uploadData.data.imageUrl;
+      } else {
+        // Keep existing image URL if no new image is uploaded
+        // We need to get the original Snowflake URL, not the proxy URL
+        const currentGift = gifts.find(g => g.giftId === giftId);
+        mktProofUrl = currentGift?.mktProof || null;
       }
 
-      const response = await fetch(`/api/gift-approval/${giftId}`, {
+      // Update gift details using the new unified API
+      const response = await fetch(`/api/gift-approval/update`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          workflowStatus: "KAM_Proof",
-          dispatcher,
-          trackingCode,
-          trackingStatus,
-          mktProof: mktProofUrl,
-          uploadedBy: user?.email || "unknown",
+          giftId,
+          tab: "processing",
+          action: "update-mktops",
+          userId: user?.id || "unknown",
+          userRole: user?.role,
+          userPermissions: user?.permissions,
+          data: {
+            dispatcher: dispatcher.trim(),
+            trackingCode: trackingCode.trim(),
+            trackingStatus: trackingStatus.trim(),
+            mktProof: mktProofUrl,
+            giftFeedback: null // Optional field for MKTOps updates
+          }
         }),
       });
 
@@ -613,15 +662,7 @@ export default function Gifts() {
 
       toast.success("MKTOps information updated successfully");
       setIsMKTOpsModalOpen(false);
-
-      // Reload data - fetch all data without workflow status filter
-      const result = await fetchGifts({
-        page: pagination.page,
-        limit: pagination.limit,
-        search: searchTerm,
-        // Remove workflowStatus filter - fetch all data
-      });
-      setGifts(convertDatesInGifts(result.data));
+      await refreshGiftsData();
     } catch (error) {
       console.error("Error updating MKTOps information:", error);
       toast.error("Failed to update MKTOps information");
@@ -635,37 +676,51 @@ export default function Gifts() {
     }
 
     try {
-      // If there's an image file, upload it first
+      // If there's an image file, upload it using the API endpoint
       let kamProofUrl = null;
       if (kamProof) {
+        toast.info("Uploading image to Snowflake...");
+        
         const formData = new FormData();
         formData.append("file", kamProof);
-        formData.append("module", "gift-approval");
-        formData.append("uploadedBy", user?.email || "unknown");
+        formData.append("giftId", giftId.toString());
+        formData.append("uploadType", "kam-proof");
 
-        const uploadResponse = await fetch("/api/upload", {
+        const uploadResponse = await fetch("/api/gift-approval/upload-image", {
           method: "POST",
           body: formData,
         });
 
         const uploadData = await uploadResponse.json();
-        if (uploadData.success) {
-          kamProofUrl = uploadData.fileUrl;
-        } else {
-          throw new Error("Failed to upload KAM proof image");
+        if (!uploadData.success) {
+          throw new Error(uploadData.message || "Failed to upload image");
         }
+
+        kamProofUrl = uploadData.data.imageUrl;
+      } else {
+        // Keep existing image URL if no new image is uploaded
+        // We need to get the original Snowflake URL, not the proxy URL
+        const currentGift = gifts.find(g => g.giftId === giftId);
+        kamProofUrl = currentGift?.kamProof || null;
       }
 
-      const response = await fetch(`/api/gift-approval/${giftId}`, {
+      // Update gift details using the new unified API
+      const response = await fetch(`/api/gift-approval/update`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          workflowStatus: "SalesOps_Audit",
-          kamProof: kamProofUrl,
-          giftFeedback,
-          uploadedBy: user?.email || "unknown",
+          giftId,
+          tab: "kam-proof",
+          action: "submit",
+          userId: user?.id || "unknown",
+          userRole: user?.role,
+          userPermissions: user?.permissions,
+          data: {
+            kamProof: kamProofUrl,
+            giftFeedback: giftFeedback.trim() || null
+          }
         }),
       });
 
@@ -675,39 +730,157 @@ export default function Gifts() {
         throw new Error(data.message || "Failed to submit KAM proof");
       }
 
-      toast.success("KAM proof submitted successfully");
+      // Check if this was a resubmission (gift had audit remark)
+      const currentGift = gifts.find(g => g.giftId === giftId);
+      const wasResubmission = currentGift?.auditRemark;
+      
+      const successMessage = wasResubmission 
+        ? "KAM proof resubmitted successfully - audit issue addressed" 
+        : "KAM proof submitted successfully";
+      
+      toast.success(successMessage);
       setIsKAMProofModalOpen(false);
-
-      // Reload data - fetch all data without workflow status filter
-      const result = await fetchGifts({
-        page: pagination.page,
-        limit: pagination.limit,
-        search: searchTerm,
-        // Remove workflowStatus filter - fetch all data
-      });
-      setGifts(convertDatesInGifts(result.data));
+      await refreshGiftsData();
     } catch (error) {
       console.error("Error submitting KAM proof:", error);
       toast.error("Failed to submit KAM proof");
     }
   };
 
-  const handleSubmitAudit = async (giftId: number, auditRemark: string) => {
+  const handleRejectFromProcessing = async (giftId: number, reason: string) => {
+    if (!canEditGifts) {
+      toast.error("You don't have permission to reject gifts");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/gift-approval/update", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          giftId,
+          tab: "processing",
+          action: "reject",
+          targetStatus: "Rejected", // Pass target status from frontend
+          userId: user?.id || "unknown",
+          userRole: user?.role || "",
+          userPermissions: user?.permissions || {},
+          rejectReason: reason,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || "Failed to reject gift");
+      }
+
+      toast.success("Gift rejected from processing successfully");
+      setRejectReason("");
+      setIsRejectModalOpen(false);
+      setRejectingGiftId(null);
+      await refreshGiftsData();
+    } catch (error) {
+      toast.error("Failed to reject gift from processing");
+    }
+  };
+
+  const handleToggleBO = async (giftId: number) => {
+    if (!canEditGifts) {
+      toast.error("You don't have permission to update BO status");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/gift-approval/update", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          giftId,
+          tab: "processing",
+          action: "toggle-bo",
+          userId: user?.id || "unknown",
+          userRole: user?.role || "",
+          userPermissions: user?.permissions || {},
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || "Failed to toggle BO status");
+      }
+
+      toast.success("BO status updated successfully");
+      await refreshGiftsData();
+    } catch (error) {
+      toast.error("Failed to toggle BO status");
+    }
+  };
+
+  const handleProceedToNext = async (giftId: number) => {
+    if (!canEditGifts) {
+      toast.error("You don't have permission to proceed to next step");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/gift-approval/update", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          giftId,
+          tab: "processing",
+          action: "proceed",
+          targetStatus: "KAM_Proof", // Move to KAM Proof step
+          userId: user?.id || "unknown",
+          userRole: user?.role || "",
+          userPermissions: user?.permissions || {},
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || "Failed to proceed to next step");
+      }
+
+      toast.success("Gift moved to KAM Proof step successfully");
+      await refreshGiftsData();
+    } catch (error) {
+      toast.error("Failed to proceed to next step");
+    }
+  };
+
+  const handleSubmitAudit = async (giftId: number, auditRemark: string, checkerName: string, action: "complete" | "mark-issue") => {
     if (!canEditGifts) {
       toast.error("You don't have permission to submit audit");
       return;
     }
 
     try {
-      const response = await fetch(`/api/gift-approval/${giftId}`, {
+      const response = await fetch(`/api/gift-approval/update`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          workflowStatus: "Completed",
-          auditRemark,
-          uploadedBy: user?.email || "unknown",
+          giftId,
+          tab: "audit",
+          action: action,
+          targetStatus: action === "complete" ? "Completed" : "KAM_Proof", // Pass target status from frontend
+          userId: user?.id || "unknown",
+          userRole: user?.role,
+          userPermissions: user?.permissions,
+          auditRemark: auditRemark.trim() || null,
+          checkerName: checkerName.trim() || null,
+
         }),
       });
 
@@ -717,19 +890,19 @@ export default function Gifts() {
         throw new Error(data.message || "Failed to submit audit");
       }
 
-      toast.success("Audit completed successfully");
-
-      // Reload data - fetch all data without workflow status filter
-      const result = await fetchGifts({
-        page: pagination.page,
-        limit: pagination.limit,
-        search: searchTerm,
-        // Remove workflowStatus filter - fetch all data
-      });
-      setGifts(convertDatesInGifts(result.data));
+      const successMessage = action === "complete" 
+        ? "Gift marked as completed successfully" 
+        : "Gift marked as issue and returned to KAM Proof";
+      
+      toast.success(successMessage);
+      setIsAuditModalOpen(false);
+      await refreshGiftsData();
     } catch (error) {
       console.error("Error submitting audit:", error);
-      toast.error("Failed to submit audit");
+      const errorMessage = action === "complete" 
+        ? "Failed to mark gift as completed" 
+        : "Failed to mark gift as issue";
+      toast.error(errorMessage);
     }
   };
 
@@ -777,6 +950,14 @@ export default function Gifts() {
     }
 
     return filtered;
+  };
+
+  // Get paginated gifts for the current page
+  const getPaginatedGifts = (status: string) => {
+    const filtered = getFilteredGifts(status);
+    const startIndex = (pagination.page - 1) * pagination.limit;
+    const endIndex = startIndex + pagination.limit;
+    return filtered.slice(startIndex, endIndex);
   };
 
   // Get workflow status badge
@@ -906,10 +1087,22 @@ export default function Gifts() {
         return (
           <div className="flex items-center gap-2">
             {getWorkflowStatusBadge(status)}
-            {status === "Rejected" && gift.auditRemark && (
+            {status === "Rejected" && gift.rejectReason && (
               <div className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200">
                 <XCircle className="h-3 w-3" />
                 <span>Has Reason</span>
+              </div>
+            )}
+            {(status === "KAM_Request" || status === "Manager_Review" || status === "MKTOps_Processing" || status === "KAM_Proof") && gift.auditRemark && (
+              <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-full border border-orange-200">
+                <XCircle className="h-3 w-3" />
+                <span>Has Issue</span>
+              </div>
+            )}
+            {status === "MKTOps_Processing" && gift.uploadedBo && (
+              <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-200">
+                <CheckSquare className="h-3 w-3" />
+                <span>BO Uploaded</span>
               </div>
             )}
           </div>
@@ -1000,7 +1193,7 @@ export default function Gifts() {
                     </Card>
 
                     {/* Rejection Reason - Prominently displayed for rejected gifts */}
-                    {gift.workflowStatus === "Rejected" && gift.auditRemark && (
+                    {gift.workflowStatus === "Rejected" && gift.rejectReason && (
                       <Card className="border-red-200 bg-red-50">
                         <CardHeader>
                           <CardTitle className="text-lg text-red-800 flex items-center gap-2">
@@ -1011,10 +1204,36 @@ export default function Gifts() {
                         <CardContent>
                           <div className="bg-white p-4 rounded-lg border border-red-200">
                             <p className="text-red-800 font-medium mb-2">Reason for Rejection:</p>
-                            <p className="text-red-700">{gift.auditRemark}</p>
+                            <p className="text-red-700">{gift.rejectReason}</p>
                             <div className="mt-3 text-sm text-red-600">
                               <p>
-                                <span className="font-medium">Rejected by:</span> {gift.auditedBy || "Unknown"}
+                                <span className="font-medium">Rejected by:</span> {gift.approvalReviewedBy || "Unknown"}
+                              </p>
+                              <p>
+                                <span className="font-medium">Date:</span> {gift.lastModifiedDate ? gift.lastModifiedDate.toLocaleDateString() : "Unknown"}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Audit Issue - Prominently displayed for gifts returned from audit */}
+                    {gift.workflowStatus === "KAM_Proof" && gift.auditRemark && (
+                      <Card className="border-orange-200 bg-orange-50">
+                        <CardHeader>
+                          <CardTitle className="text-lg text-orange-800 flex items-center gap-2">
+                            <XCircle className="h-5 w-5" />
+                            Audit Issue - Requires KAM Review
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="bg-white p-4 rounded-lg border border-orange-200">
+                            <p className="text-orange-800 font-medium mb-2">Issue Found During Audit:</p>
+                            <p className="text-orange-700">{gift.auditRemark}</p>
+                            <div className="mt-3 text-sm text-orange-600">
+                              <p>
+                                <span className="font-medium">Audited by:</span> {gift.auditedBy || "Unknown"}
                               </p>
                               <p>
                                 <span className="font-medium">Date:</span> {gift.auditDate ? gift.auditDate.toLocaleDateString() : "Unknown"}
@@ -1070,7 +1289,7 @@ export default function Gifts() {
                               </div>
                             )}
 
-                            {gift.auditRemark && gift.workflowStatus !== "Rejected" && (
+                            {gift.auditRemark && gift.workflowStatus !== "Rejected" && gift.workflowStatus !== "KAM_Proof" && (
                               <div>
                                 <h5 className="font-medium text-slate-700 mb-2">Audit Information</h5>
                                 <div className="grid grid-cols-2 gap-4 text-sm">
@@ -1142,36 +1361,108 @@ export default function Gifts() {
             )}
 
             {gift.workflowStatus === "MKTOps_Processing" && (
-              <RoleBasedActionPermission
-                allowedRoles={["PROCUREMENT", "ADMIN"]}
-                permission="EDIT"
-                module="gift-approval"
-                alwaysShow={true}
-                disabledFallback={
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-not-allowed text-gray-400" disabled title="Procurement role and EDIT permission required">
+              <>
+                <RoleBasedActionPermission
+                  allowedRoles={["MKTOPS", "MANAGER", "ADMIN"]}
+                  permission="EDIT"
+                  module="gift-approval"
+                  alwaysShow={true}
+                  disabledFallback={
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-not-allowed text-gray-400" disabled title="MKTOps/Manager role and EDIT permission required">
+                      <Truck className="h-4 w-4" />
+                    </Button>
+                  }
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 cursor-pointer text-blue-600 hover:text-blue-700"
+                    onClick={() => {
+                      setMKTOpsGiftId(gift.giftId);
+                      setMKTOpsForm({
+                        dispatcher: gift.dispatcher || "",
+                        trackingCode: gift.trackingCode || "",
+                        trackingStatus: gift.trackingStatus || "Pending",
+                        mktOpsProof: null,
+                        existingMktProofUrl: getImageProxyUrl(gift.mktProof),
+                      });
+                      setIsMKTOpsModalOpen(true);
+                    }}
+                    title="Update MKTOps Info"
+                  >
                     <Truck className="h-4 w-4" />
                   </Button>
-                }
-              >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 cursor-pointer text-blue-600 hover:text-blue-700"
-                  onClick={() => {
-                    setMKTOpsGiftId(gift.giftId);
-                    setMKTOpsForm({
-                      dispatcher: gift.dispatcher || "",
-                      trackingCode: gift.trackingCode || "",
-                      trackingStatus: gift.trackingStatus || "Pending",
-                      mktOpsProof: null,
-                    });
-                    setIsMKTOpsModalOpen(true);
-                  }}
-                  title="Update MKTOps Info"
+                </RoleBasedActionPermission>
+
+                <RoleBasedActionPermission
+                  allowedRoles={["MKTOPS", "MANAGER", "ADMIN"]}
+                  permission="EDIT"
+                  module="gift-approval"
+                  alwaysShow={true}
+                  disabledFallback={
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-not-allowed text-gray-400" disabled title="MKTOps/Manager role and EDIT permission required">
+                      <XCircle className="h-4 w-4" />
+                    </Button>
+                  }
                 >
-                  <Truck className="h-4 w-4" />
-                </Button>
-              </RoleBasedActionPermission>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 cursor-pointer text-red-600 hover:text-red-700"
+                    onClick={() => {
+                      setRejectingGiftId(gift.giftId);
+                      setIsRejectModalOpen(true);
+                    }}
+                    title="Reject from Processing (e.g., item sold out)"
+                  >
+                    <XCircle className="h-4 w-4" />
+                  </Button>
+                </RoleBasedActionPermission>
+
+                <RoleBasedActionPermission
+                  allowedRoles={["MKTOPS", "MANAGER", "ADMIN"]}
+                  permission="EDIT"
+                  module="gift-approval"
+                  alwaysShow={true}
+                  disabledFallback={
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-not-allowed text-gray-400" disabled title="MKTOps/Manager role and EDIT permission required">
+                      <CheckSquare className="h-4 w-4" />
+                    </Button>
+                  }
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-8 w-8 p-0 cursor-pointer ${gift.uploadedBo ? 'text-green-600 hover:text-green-700' : 'text-gray-600 hover:text-gray-700'}`}
+                    onClick={() => handleToggleBO(gift.giftId)}
+                    title={`Toggle BO Upload Status (Currently: ${gift.uploadedBo ? 'Uploaded' : 'Not Uploaded'})`}
+                  >
+                    <CheckSquare className="h-4 w-4" />
+                  </Button>
+                </RoleBasedActionPermission>
+
+                <RoleBasedActionPermission
+                  allowedRoles={["MKTOPS", "MANAGER", "ADMIN"]}
+                  permission="EDIT"
+                  module="gift-approval"
+                  alwaysShow={true}
+                  disabledFallback={
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-not-allowed text-gray-400" disabled title="MKTOps/Manager role and EDIT permission required">
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  }
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 cursor-pointer text-purple-600 hover:text-purple-700"
+                    onClick={() => handleProceedToNext(gift.giftId)}
+                    title="Proceed to KAM Proof Step"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </RoleBasedActionPermission>
+              </>
             )}
 
             {gift.workflowStatus === "KAM_Proof" && (
@@ -1195,6 +1486,7 @@ export default function Gifts() {
                     setKAMProofForm({
                       kamProof: null, // Reset to null since we're uploading a new file
                       giftFeedback: gift.giftFeedback || "",
+                      existingKamProofUrl: getImageProxyUrl(gift.kamProof),
                     });
                     setIsKAMProofModalOpen(true);
                   }}
@@ -1224,9 +1516,10 @@ export default function Gifts() {
                   onClick={() => {
                     setAuditGiftId(gift.giftId);
                     setAuditRemark(gift.auditRemark || "");
+                    setAuditCheckerName(user?.name || user?.email || "");
                     setIsAuditModalOpen(true);
                   }}
-                  title="Complete Audit"
+                  title="Audit Gift Request"
                 >
                   <ClipboardCheck className="h-4 w-4" />
                 </Button>
@@ -1240,9 +1533,8 @@ export default function Gifts() {
 
   // Get tab counts - now works with client-side filtering and search
   const getTabCounts = () => {
-    // Apply search filter to all counts if search term exists
-    // This ensures search results are reflected in all tab counts
-    const filteredGifts = searchTerm ? gifts.filter((gift) => gift.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) || gift.giftItem?.toLowerCase().includes(searchTerm.toLowerCase()) || gift.giftId?.toString().includes(searchTerm.toLowerCase()) || gift.memberLogin?.toLowerCase().includes(searchTerm.toLowerCase())) : gifts;
+    // Use the filtered gifts for counts
+    const filteredGifts = getFilteredGifts("all");
 
     return {
       all: filteredGifts.length,
@@ -1393,8 +1685,8 @@ export default function Gifts() {
                           </SelectTrigger>
                           <SelectContent>
                             {assignedVIPPlayers.map((vip) => (
-                              <SelectItem key={vip.id} value={vip.id}>
-                                {vip.name} ({vip.login})
+                              <SelectItem key={vip.vipId} value={vip.vipId}>
+                                {vip.memberName} ({vip.memberLogin})
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -1453,9 +1745,9 @@ export default function Gifts() {
 
                       <div className="space-y-2">
                         <Label htmlFor="remark" className="text-sm font-medium">
-                          Remark <span className="text-red-500">*</span>
+                          Remark
                         </Label>
-                        <Textarea id="remark" placeholder="Enter detailed remarks about this gift request" value={requestForm.remark} onChange={(e) => handleFormChange("remark", e.target.value)} rows={4} required />
+                        <Textarea id="remark" placeholder="Enter detailed remarks about this gift request (optional)" value={requestForm.remark} onChange={(e) => handleFormChange("remark", e.target.value)} rows={4} />
                       </div>
 
                       <div className="flex justify-end space-x-3 pt-4">
@@ -1594,6 +1886,13 @@ export default function Gifts() {
                     onUploadComplete={(data) => {
                       console.log("Bulk upload completed:", data);
                     }}
+                    user={{
+                      id: user?.id || "",
+                      name: user?.name || "",
+                      email: user?.email || "",
+                      role: user?.role || "",
+                      permissions: user?.permissions || {}
+                    }}
                   />
                 </KAMAndAdminActionWithPermission>
               </div>
@@ -1729,20 +2028,50 @@ export default function Gifts() {
                     </TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="all">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getFilteredGifts("all")} />}</TabsContent>
+                  <TabsContent value="all">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getPaginatedGifts("all")} />}</TabsContent>
 
-                  <TabsContent value="pending">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getFilteredGifts("pending")} />}</TabsContent>
+                  <TabsContent value="pending">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getPaginatedGifts("pending")} />}</TabsContent>
 
-                  <TabsContent value="rejected">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getFilteredGifts("rejected")} />}</TabsContent>
+                  <TabsContent value="rejected">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getPaginatedGifts("rejected")} />}</TabsContent>
 
-                  <TabsContent value="processing">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getFilteredGifts("processing")} />}</TabsContent>
+                  <TabsContent value="processing">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getPaginatedGifts("processing")} />}</TabsContent>
 
-                  <TabsContent value="kam-proof">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getFilteredGifts("kam-proof")} />}</TabsContent>
+                  <TabsContent value="kam-proof">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getPaginatedGifts("kam-proof")} />}</TabsContent>
 
-                  <TabsContent value="audit">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getFilteredGifts("audit")} />}</TabsContent>
+                  <TabsContent value="audit">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getPaginatedGifts("audit")} />}</TabsContent>
 
-                  <TabsContent value="completed">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getFilteredGifts("completed")} />}</TabsContent>
+                  <TabsContent value="completed">{apiLoading ? <DataTableSkeleton /> : <DataTable columns={columns} data={getPaginatedGifts("completed")} />}</TabsContent>
                 </div>
+
+                {/* Pagination Controls */}
+                {!apiLoading && pagination.totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-4">
+                    <div className="text-sm text-gray-600">
+                      Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, getFilteredGifts(activeTab).length)} of {getFilteredGifts(activeTab).length} results
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(pagination.page - 1)}
+                        disabled={pagination.page <= 1}
+                      >
+                        Previous
+                      </Button>
+                      <span className="text-sm">
+                        Page {pagination.page} of {pagination.totalPages}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(pagination.page + 1)}
+                        disabled={pagination.page >= pagination.totalPages}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </Tabs>
             </CardContent>
           </Card>
@@ -1765,7 +2094,17 @@ export default function Gifts() {
               <Button variant="outline" onClick={() => setIsRejectModalOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => rejectingGiftId && handleRejectGift(rejectingGiftId, rejectReason)} disabled={!rejectReason.trim()} className="bg-red-600 hover:bg-red-700">
+              <Button onClick={() => {
+                if (rejectingGiftId) {
+                  // Check if the gift is in processing tab or pending tab
+                  const gift = gifts.find(g => g.giftId === rejectingGiftId);
+                  if (gift?.workflowStatus === "MKTOps_Processing") {
+                    handleRejectFromProcessing(rejectingGiftId, rejectReason);
+                  } else {
+                    handleRejectGift(rejectingGiftId, rejectReason);
+                  }
+                }
+              }} disabled={!rejectReason.trim()} className="bg-red-600 hover:bg-red-700">
                 Reject Gift
               </Button>
             </div>
@@ -1805,11 +2144,44 @@ export default function Gifts() {
             </div>
             <div>
               <Label htmlFor="mktOpsProof">MKTOps Proof (Image)</Label>
+              
+              {/* Show existing image if available */}
+              {mkTOpsForm.existingMktProofUrl && !mkTOpsForm.mktOpsProof && (
+                <div className="mb-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                  <p className="text-sm text-gray-600 mb-2">Previously uploaded image:</p>
+                  <div className="relative">
+                    <img
+                      src={mkTOpsForm.existingMktProofUrl}
+                      alt="Existing MKTOps proof"
+                      className="max-w-full h-auto max-h-32 rounded border"
+                    />
+                    {/* Download button */}
+                    {selectedGift?.mktProof && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="absolute top-2 right-2 bg-white/90 hover:bg-white"
+                        onClick={() => {
+                          const downloadUrl = getImageDownloadUrl(selectedGift.mktProof);
+                          if (downloadUrl) {
+                            window.open(downloadUrl, '_blank');
+                          }
+                        }}
+                      >
+                        <Download className="h-3 w-3 mr-1" />
+                        Download
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Upload a new image to replace this one</p>
+                </div>
+              )}
+              
               <FileUploader
                 acceptedTypes="image/*"
-                maxSize={5 * 1024 * 1024} // 5MB
+                maxSize={20 * 1024 * 1024} // 20MB
                 onFileSelect={(file) => setMKTOpsForm((prev) => ({ ...prev, mktOpsProof: file }))}
-                placeholder="Upload MKTOps proof image (receipt, invoice, etc.)"
+                placeholder="Upload MKTOps proof image (receipt, invoice, etc.) - Max 20MB"
                 className="mt-1"
               />
               {mkTOpsForm.mktOpsProof && <div className="mt-2 text-sm text-green-600">✓ {mkTOpsForm.mktOpsProof.name} selected</div>}
@@ -1836,11 +2208,44 @@ export default function Gifts() {
           <div className="space-y-4">
             <div>
               <Label htmlFor="kamProof">KAM Proof (Image)</Label>
+              
+              {/* Show existing image if available */}
+              {kamProofForm.existingKamProofUrl && !kamProofForm.kamProof && (
+                <div className="mb-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                  <p className="text-sm text-gray-600 mb-2">Previously uploaded image:</p>
+                  <div className="relative">
+                    <img
+                      src={kamProofForm.existingKamProofUrl}
+                      alt="Existing KAM proof"
+                      className="max-w-full h-auto max-h-32 rounded border"
+                    />
+                    {/* Download button */}
+                    {selectedGift?.kamProof && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="absolute top-2 right-2 bg-white/90 hover:bg-white"
+                        onClick={() => {
+                          const downloadUrl = getImageDownloadUrl(selectedGift.kamProof);
+                          if (downloadUrl) {
+                            window.open(downloadUrl, '_blank');
+                          }
+                        }}
+                      >
+                        <Download className="h-3 w-3 mr-1" />
+                        Download
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Upload a new image to replace this one</p>
+                </div>
+              )}
+              
               <FileUploader
                 acceptedTypes="image/*"
-                maxSize={5 * 1024 * 1024} // 5MB
+                maxSize={20 * 1024 * 1024} // 20MB
                 onFileSelect={(file) => setKAMProofForm((prev) => ({ ...prev, kamProof: file }))}
-                placeholder="Upload delivery proof image (delivery photo, signature, etc.)"
+                placeholder="Upload delivery proof image (delivery photo, signature, etc.) - Max 20MB"
                 className="mt-1"
               />
               {kamProofForm.kamProof && typeof kamProofForm.kamProof === "object" && <div className="mt-2 text-sm text-green-600">✓ {kamProofForm.kamProof.name} selected</div>}
@@ -1853,7 +2258,7 @@ export default function Gifts() {
               <Button variant="outline" onClick={() => setIsKAMProofModalOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => kamProofGiftId && handleSubmitKAMProof(kamProofGiftId, kamProofForm.kamProof, kamProofForm.giftFeedback)} disabled={!kamProofForm.kamProof} className="bg-orange-600 hover:bg-orange-700">
+              <Button onClick={() => kamProofGiftId && handleSubmitKAMProof(kamProofGiftId, kamProofForm.kamProof, kamProofForm.giftFeedback)} disabled={!kamProofForm.kamProof && !kamProofForm.existingKamProofUrl} className="bg-orange-600 hover:bg-orange-700">
                 Submit KAM Proof
               </Button>
             </div>
@@ -1865,10 +2270,20 @@ export default function Gifts() {
       <Dialog open={isAuditModalOpen} onOpenChange={setIsAuditModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Complete Audit</DialogTitle>
-            <DialogDescription>Complete the final audit for this gift request.</DialogDescription>
+            <DialogTitle>Audit Gift Request</DialogTitle>
+            <DialogDescription>Review the gift request and either mark it as completed or mark it as an issue requiring KAM review. Your name will be automatically recorded as the checker.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div>
+              <Label htmlFor="auditCheckerName">Checker Name <span className="text-red-500">*</span></Label>
+              <Input 
+                id="auditCheckerName" 
+                value={auditCheckerName} 
+                disabled
+                className="bg-gray-50 cursor-not-allowed"
+                placeholder="Auto-populated with your name" 
+              />
+            </div>
             <div>
               <Label htmlFor="auditRemark">Audit Remark</Label>
               <Textarea id="auditRemark" value={auditRemark} onChange={(e) => setAuditRemark(e.target.value)} placeholder="Enter audit remarks..." rows={4} />
@@ -1877,8 +2292,11 @@ export default function Gifts() {
               <Button variant="outline" onClick={() => setIsAuditModalOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => auditGiftId && handleSubmitAudit(auditGiftId, auditRemark)} disabled={!auditRemark.trim()} className="bg-indigo-600 hover:bg-indigo-700">
-                Complete Audit
+              <Button onClick={() => auditGiftId && handleSubmitAudit(auditGiftId, auditRemark, auditCheckerName, "mark-issue")} disabled={!auditRemark.trim()} className="bg-orange-600 hover:bg-orange-700">
+                Mark as Issue
+              </Button>
+              <Button onClick={() => auditGiftId && handleSubmitAudit(auditGiftId, auditRemark, auditCheckerName, "complete")} disabled={!auditRemark.trim()} className="bg-indigo-600 hover:bg-indigo-700">
+                Mark as Completed
               </Button>
             </div>
           </div>

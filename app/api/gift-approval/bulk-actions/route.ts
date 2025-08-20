@@ -9,6 +9,7 @@ export async function PUT(request: NextRequest) {
       action,
       giftIds,
       workflowStatus,
+      targetStatus, // New field for target status
       trackingStatus,
       dispatcher,
       trackingCode,
@@ -25,7 +26,7 @@ export async function PUT(request: NextRequest) {
     }
 
     if (!uploadedBy) {
-      return NextResponse.json({ success: false, message: "uploadedBy is required for audit trail" }, { status: 400 });
+      return NextResponse.json({ success: false, message: "uploadedBy (user ID) is required for audit trail" }, { status: 400 });
     }
 
     // Validate action types
@@ -36,8 +37,8 @@ export async function PUT(request: NextRequest) {
     }
 
     // Validate required fields based on action
-    if (action === "approve" && !workflowStatus) {
-      return NextResponse.json({ success: false, message: "workflowStatus is required for approve action" }, { status: 400 });
+    if (action === "approve" && !targetStatus) {
+      return NextResponse.json({ success: false, message: "targetStatus is required for approve action" }, { status: 400 });
     }
 
     if (action === "reject" && !reason) {
@@ -56,22 +57,26 @@ export async function PUT(request: NextRequest) {
     let updateFields: string[] = [];
     let updateParams: any[] = [];
 
+    // Use uploadedBy directly since all user fields are now VARCHAR
+    const userId = uploadedBy;
+
     switch (action) {
       case "approve":
         updateFields.push("WORKFLOW_STATUS = ?");
-        updateParams.push(workflowStatus);
+        updateParams.push(targetStatus || workflowStatus); // Use targetStatus if provided, fallback to workflowStatus
         updateFields.push("APPROVAL_REVIEWED_BY = ?");
-        updateParams.push(uploadedBy);
+        updateParams.push(userId);
+        updateFields.push("REJECT_REASON = ?");
+        updateParams.push(null);
         break;
 
       case "reject":
         updateFields.push("WORKFLOW_STATUS = ?");
-        updateParams.push("Rejected");
-        updateFields.push("AUDIT_REMARK = ?");
+        updateParams.push(targetStatus || "Rejected"); // Use targetStatus if provided, fallback to "Rejected"
+        updateFields.push("APPROVAL_REVIEWED_BY = ?");
+        updateParams.push(userId);
+        updateFields.push("REJECT_REASON = ?");
         updateParams.push(reason);
-        updateFields.push("AUDITED_BY = ?");
-        updateParams.push(uploadedBy);
-        updateFields.push("AUDIT_DATE = CURRENT_TIMESTAMP()");
         break;
 
       case "process":
@@ -84,7 +89,7 @@ export async function PUT(request: NextRequest) {
         updateFields.push("TRACKING_STATUS = ?");
         updateParams.push(trackingStatus);
         updateFields.push("PURCHASED_BY = ?");
-        updateParams.push(uploadedBy);
+        updateParams.push(userId);
         updateFields.push("MKT_PURCHASE_DATE = CURRENT_TIMESTAMP()");
         break;
 
@@ -100,7 +105,7 @@ export async function PUT(request: NextRequest) {
           updateParams.push(giftFeedback);
         }
         updateFields.push("KAM_PROOF_BY = ?");
-        updateParams.push(uploadedBy);
+        updateParams.push(userId);
         break;
 
       case "complete_audit":
@@ -109,7 +114,7 @@ export async function PUT(request: NextRequest) {
         updateFields.push("AUDIT_REMARK = ?");
         updateParams.push(auditRemark);
         updateFields.push("AUDITED_BY = ?");
-        updateParams.push(uploadedBy);
+        updateParams.push(userId);
         updateFields.push("AUDIT_DATE = CURRENT_TIMESTAMP()");
         break;
 
@@ -149,7 +154,7 @@ export async function PUT(request: NextRequest) {
 
     // Build the WHERE clause for multiple gift IDs
     const placeholders = giftIds.map(() => "?").join(",");
-    const whereClause = `GIFT_ID IN (${placeholders}) AND (BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE STATUS != 'INACTIVE'))`;
+    const whereClause = `GIFT_ID IN (${placeholders}) AND (BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE IS_ACTIVE != FALSE))`;
 
     const sql = `
       UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS

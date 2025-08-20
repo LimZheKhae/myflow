@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Gift Approval API provides comprehensive CRUD operations for managing gift requests, bulk imports, batch management, and statistics. All endpoints use the `MY_FLOW.PRESENTATION.GIFT_REQUEST_DETAILS` table structure.
+The Gift Approval API provides comprehensive CRUD operations for managing gift requests, bulk imports, batch management, and statistics. All endpoints use the `MY_FLOW.PUBLIC.GIFT_DETAILS` table structure.
 
 ## Base URL
 
@@ -222,7 +222,7 @@ Fetch batch information with statistics.
 
 - `page` (number, default: 1) - Page number
 - `limit` (number, default: 20) - Items per page
-- `status` (string) - Filter by batch status (ACTIVE/INACTIVE)
+- `isActive` (boolean) - Filter by batch status (TRUE/FALSE)
 - `uploadedBy` (string) - Filter by uploader
 - `dateFrom` (string) - Filter from date (YYYY-MM-DD)
 - `dateTo` (string) - Filter to date (YYYY-MM-DD)
@@ -238,7 +238,7 @@ Fetch batch information with statistics.
       "batchName": "January Birthday Gifts",
       "uploadedBy": "kam@example.com",
       "totalRows": 50,
-      "status": "ACTIVE",
+      "isActive": true,
       "createdAt": "2024-01-15T10:30:00Z",
       "completedAt": null,
       "giftCount": 50,
@@ -263,7 +263,7 @@ Update batch status (activate/deactivate).
 ```json
 {
   "batchId": "BATCH_001",
-  "status": "INACTIVE",
+  "isActive": false,
   "updatedBy": "admin@example.com"
 }
 ```
@@ -553,8 +553,34 @@ type TrackingStatus = "Pending" | "In Transit" | "Delivered" | "Failed" | "Retur
 ### BatchStatus
 
 ```typescript
-type BatchStatus = "ACTIVE" | "INACTIVE";
+type BatchStatus = boolean; // true for active, false for inactive
 ```
+
+## 9. Database Schema Reference
+
+### GIFT_DETAILS Table Structure
+
+The main table `MY_FLOW.PUBLIC.GIFT_DETAILS` contains all gift request data with the following key fields:
+
+- **GIFT_ID**: Auto-incrementing primary key (starts at 100)
+- **VIP_ID**: Reference to VIP player
+- **BATCH_ID**: Reference to bulk import batch (if applicable)
+- **WORKFLOW_STATUS**: Current stage in the approval workflow
+- **COST_MYR/COST_VND**: Gift cost in different currencies
+- **Tracking fields**: DISPATCHER, TRACKING_CODE, TRACKING_STATUS
+- **Proof fields**: MKT_PROOF, KAM_PROOF, GIFT_FEEDBACK
+- **Audit fields**: AUDITED_BY, AUDIT_DATE, AUDIT_REMARK
+
+### BULK_IMPORT_BATCHES Table Structure
+
+The batch tracking table `MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES` contains:
+
+- **BATCH_ID**: Auto-incrementing primary key (starts at 10)
+- **BATCH_NAME**: Human-readable batch name (Format: BATCH_{uploader name}_{date time})
+- **UPLOADED_BY**: User who created the batch
+- **TOTAL_ROWS**: Number of rows in the batch
+- **IS_ACTIVE**: Batch status (TRUE/FALSE)
+- **CREATED_DATE/COMPLETED_AT**: Timestamps for tracking
 
 ---
 

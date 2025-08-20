@@ -1,4 +1,27 @@
-// Gift Module Types - Based on MY_FLOW.PRESENTATION.GIFT_REQUEST_DETAILS table
+// Gift Module Types - Based on MY_FLOW.PUBLIC.GIFT_DETAILS table
+
+import { z } from "zod";
+
+// Zod schema for gift request form validation
+export const giftRequestFormSchema = z.object({
+  vipId: z.string().min(1, "VIP Player is required"),
+  memberName: z.string().min(1, "Member name is required"),
+  memberLogin: z.string().min(1, "Member login is required"),
+  giftItem: z.string().min(1, "Gift item is required"),
+  rewardName: z.string().optional(),
+  rewardClubOrder: z.string().optional(),
+  value: z.string().min(1, "Value is required").refine(
+    (val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0,
+    "Value must be a positive number"
+  ),
+  remark: z.string().optional(),
+  category: z.string().min(1, "Category is required").refine(
+    (val) => ["Birthday", "Retention", "High Roller", "Promotion", "Other"].includes(val),
+    "Please select a valid category"
+  )
+});
+
+export type GiftRequestFormSchema = z.infer<typeof giftRequestFormSchema>;
 
 export interface GiftRequestDetails {
   // Primary Key
@@ -49,6 +72,9 @@ export interface GiftRequestDetails {
   auditDate: Date | null;
   auditRemark: string | null;
 
+  // Rejection Information
+  rejectReason: string | null;
+
   // System Information
   lastModifiedDate: Date | null;
 }
@@ -62,16 +88,14 @@ export type WorkflowStatus = "KAM_Request" | "Manager_Review" | "MKTOps_Processi
 
 // Bulk Import Types
 export interface BulkImportBatch {
-  batchId: string;
-  batchName: string;
-  uploadedBy: string;
-  totalRows: number;
-  status: BatchStatus;
-  createdAt: Date;
-  completedAt?: Date;
+  BATCH_ID: number;
+  BATCH_NAME: string;
+  UPLOADED_BY: string;
+  TOTAL_ROWS: number;
+  CREATED_DATE: string;
+  COMPLETED_AT: string | null;
+  IS_ACTIVE: boolean;
 }
-
-export type BatchStatus = "ACTIVE" | "INACTIVE";
 
 // CSV Import Types for different tabs
 export interface PendingTabRow {
@@ -109,13 +133,15 @@ export interface AuditTabRow {
 
 // Form Types for UI
 export interface GiftRequestForm {
-  vipId: string;
-  giftItem: string;
-  rewardName: string;
-  rewardClubOrder: string;
-  value: string;
-  remark: string;
-  category: GiftCategory | "";
+  vipId: string;           // Required: VIP Player ID
+  memberName: string;      // Required: VIP Member Name
+  memberLogin: string;     // Required: VIP Member Login
+  giftItem: string;        // Required: Gift item description
+  rewardName?: string;     // Optional: Reward name
+  rewardClubOrder?: string; // Optional: Reward club order
+  value: string;           // Required: Gift value (will be stored as costMyr)
+  remark?: string;         // Optional: Additional remarks
+  category: GiftCategory | ""; // Required: Gift category
 }
 
 // API Response Types
@@ -130,6 +156,56 @@ export interface BulkImportResult {
     error: string;
   }>;
   totalValue?: number;
+}
+
+// Update API Types
+export interface GiftUpdateRequest {
+  giftId: number;
+  tab: string;
+  action: string;
+  userId: string;
+  userRole?: string;
+  userPermissions?: Record<string, string[]>;
+  // Tab-specific fields
+  rejectReason?: string;
+  dispatcher?: string;
+  trackingCode?: string;
+  trackingStatus?: string;
+  kamProof?: string;
+  giftFeedback?: string;
+  auditRemark?: string;
+}
+
+export interface GiftUpdateResult {
+  success: boolean;
+  message: string;
+  data?: {
+    giftId: number;
+    newStatus: string;
+    updatedBy: string;
+    updatedAt: string;
+  };
+  error?: string;
+}
+
+// Tab-specific update types
+export interface PendingUpdateData {
+  rejectReason?: string;
+}
+
+export interface ProcessingUpdateData {
+  dispatcher?: string;
+  trackingCode?: string;
+  trackingStatus?: string;
+}
+
+export interface KamProofUpdateData {
+  kamProof?: string;
+  giftFeedback?: string;
+}
+
+export interface AuditUpdateData {
+  auditRemark?: string;
 }
 
 // Filter and Search Types

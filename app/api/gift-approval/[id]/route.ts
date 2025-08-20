@@ -44,10 +44,11 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         AUDITED_BY,
         AUDIT_DATE,
         AUDIT_REMARK,
+        REJECT_REASON,
         LAST_MODIFIED_DATE
       FROM MY_FLOW.PUBLIC.GIFT_DETAILS
       WHERE GIFT_ID = ?
-        AND (BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE STATUS != 'INACTIVE'))
+        AND (BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE IS_ACTIVE = TRUE))
     `;
 
     const result = await executeQuery(sql, [giftId]);
@@ -91,6 +92,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       auditedBy: row.AUDITED_BY,
       auditDate: row.AUDIT_DATE ? new Date(row.AUDIT_DATE) : null,
       auditRemark: row.AUDIT_REMARK,
+      rejectReason: row.REJECT_REASON,
       lastModifiedDate: row.LAST_MODIFIED_DATE ? new Date(row.LAST_MODIFIED_DATE) : null,
     };
 
@@ -203,7 +205,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS
       SET ${updateFields.join(", ")}
       WHERE GIFT_ID = ?
-        AND (BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE STATUS != 'INACTIVE'))
+        AND (BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE IS_ACTIVE != FALSE))
     `;
 
     updateParams.push(giftId);

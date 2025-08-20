@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executeQuery } from "@/lib/snowflake/config";
-import { BulkImportBatch, BatchStatus } from "@/types/gift";
+import { BulkImportBatch } from "@/types/gift";
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +10,8 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
     const offset = (page - 1) * limit;
-    const status = searchParams.get("status") as BatchStatus | null;
+    const isActive = searchParams.get("isActive");
+    const status = isActive === "true" ? true : isActive === "false" ? false : null;
     const uploadedBy = searchParams.get("uploadedBy");
     const dateFrom = searchParams.get("dateFrom");
     const dateTo = searchParams.get("dateTo");
@@ -19,8 +20,8 @@ export async function GET(request: NextRequest) {
     const whereConditions: string[] = ["1=1"];
     const params: any[] = [];
 
-    if (status) {
-      whereConditions.push("STATUS = ?");
+    if (status !== null) {
+      whereConditions.push("IS_ACTIVE = ?");
       params.push(status);
     }
 
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
         BATCH_NAME,
         UPLOADED_BY,
         TOTAL_ROWS,
-        STATUS,
+        IS_ACTIVE,
         CREATED_DATE,
         COMPLETED_AT
       FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES
@@ -87,13 +88,13 @@ export async function GET(request: NextRequest) {
       const giftStats = (giftStatsResult as any[])[0];
 
       batches.push({
-        batchId: row.BATCH_ID,
-        batchName: row.BATCH_NAME,
-        uploadedBy: row.UPLOADED_BY,
-        totalRows: row.TOTAL_ROWS,
-        status: row.STATUS,
-        createdAt: new Date(row.CREATED_DATE),
-        completedAt: row.COMPLETED_AT ? new Date(row.COMPLETED_AT) : undefined,
+        BATCH_ID: row.BATCH_ID,
+        BATCH_NAME: row.BATCH_NAME,
+        UPLOADED_BY: row.UPLOADED_BY,
+        TOTAL_ROWS: row.TOTAL_ROWS,
+        IS_ACTIVE: row.IS_ACTIVE,
+        CREATED_DATE: new Date(row.CREATED_DATE).toISOString(),
+        COMPLETED_AT: row.COMPLETED_AT ? new Date(row.COMPLETED_AT).toISOString() : null,
         giftCount: giftStats.giftCount || 0,
         totalValue: giftStats.totalValue || 0,
       });
@@ -125,25 +126,21 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { batchId, status, updatedBy } = body;
+    const { batchId, isActive, updatedBy } = body;
 
-    if (!batchId || !status || !updatedBy) {
-      return NextResponse.json({ success: false, message: "Batch ID, status, and updated by are required" }, { status: 400 });
-    }
-
-    if (!["ACTIVE", "INACTIVE"].includes(status)) {
-      return NextResponse.json({ success: false, message: "Status must be either ACTIVE or INACTIVE" }, { status: 400 });
+    if (!batchId || typeof isActive !== 'boolean' || !updatedBy) {
+      return NextResponse.json({ success: false, message: "Batch ID, isActive (boolean), and updated by are required" }, { status: 400 });
     }
 
     const sql = `
       UPDATE MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES
       SET 
-        STATUS = ?,
-        COMPLETED_AT = CASE WHEN ? = 'INACTIVE' THEN CURRENT_TIMESTAMP() ELSE COMPLETED_AT END
+        IS_ACTIVE = ?,
+        COMPLETED_AT = CASE WHEN ? = FALSE THEN CURRENT_TIMESTAMP() ELSE COMPLETED_AT END
       WHERE BATCH_ID = ?
     `;
 
-    const result = await executeQuery(sql, [status, status, batchId]);
+    const result = await executeQuery(sql, [isActive, isActive, batchId]);
     const affectedRows = (result as any).affectedRows || 0;
 
     if (affectedRows === 0) {
@@ -152,7 +149,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Batch ${status === "ACTIVE" ? "activated" : "deactivated"} successfully`,
+      message: `Batch ${isActive ? "activated" : "deactivated"} successfully`,
       affectedRows,
     });
   } catch (error) {

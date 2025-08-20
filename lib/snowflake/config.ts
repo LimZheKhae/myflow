@@ -88,6 +88,8 @@ export const executeQuery = async (query: string, binds: any[] = []): Promise<an
           console.error('Query execution failed:', err)
           reject(err)
         } else {
+          // For INSERT operations, Snowflake returns metadata about affected rows
+          // For SELECT operations, it returns the actual rows
           resolve(rows || [])
         }
       }

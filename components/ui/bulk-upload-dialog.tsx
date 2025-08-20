@@ -12,12 +12,21 @@ import { Progress } from "@/components/ui/progress"
 import { toast } from "sonner"
 import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Download, Eye, Database } from "lucide-react"
 import Papa from "papaparse"
+import { giftRequestFormSchema } from "@/types/gift"
+import { getVIPPlayerByLogin } from "@/lib/vip-players"
 
 interface BulkUploadDialogProps {
   module: string
   tab: string
   trigger: React.ReactNode
   onUploadComplete?: (data: any[]) => void
+  user?: {
+    id: string;
+    name?: string;
+    email?: string;
+    role?: string;
+    permissions?: Record<string, string[]>;
+  } | null;
 }
 
 interface ValidationResult {
@@ -35,10 +44,10 @@ interface UploadResult {
   message: string
   importedCount: number
   failedCount: number
-  transactionId?: string
+  batchId?: string
 }
 
-export function BulkUploadDialog({ module, tab, trigger, onUploadComplete }: BulkUploadDialogProps) {
+export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user }: BulkUploadDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
@@ -50,11 +59,10 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete }: Bul
     const rules: Record<string, Record<string, any>> = {
       "gift-approval": {
         pending: {
-          requiredFields: ["playerName", "gift", "cost", "currency", "category", "remark"],
-          optionalFields: ["phoneNumber", "address"],
+          requiredFields: ["memberLogin", "giftItem", "costMyr", "category"],
+          optionalFields: ["rewardName", "rewardClubOrder", "remark"],
           fieldTypes: {
-            cost: "number",
-            currency: ["MYR", "VND", "USD", "GBP"],
+            costMyr: "number",
             category: ["Birthday", "Retention", "High Roller", "Promotion", "Other"]
           }
         },
@@ -79,6 +87,18 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete }: Bul
     return rules[module]?.[tab] || {}
   }
 
+  // Get VIP player data from memberLogin (using hardcoded data until database is ready)
+  const getVIPPlayerFromMemberLogin = (memberLogin: string) => {
+    // Trim the memberLogin to handle whitespace
+    const trimmedMemberLogin = memberLogin.trim()
+    
+    if (trimmedMemberLogin && trimmedMemberLogin.length > 0) {
+      return getVIPPlayerByLogin(trimmedMemberLogin)
+    }
+    
+    return null
+  }
+
   const validateCSV = useCallback((csvData: any[]): ValidationResult => {
     const rules = getValidationRules()
     const errors: string[] = []
@@ -89,48 +109,103 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete }: Bul
       const rowNumber = index + 2 // +2 because index starts at 0 and we skip header
       let rowValid = true
 
-      // Check required fields
-      rules.requiredFields?.forEach((field: string) => {
-        if (!row[field] || row[field].toString().trim() === "") {
-          errors.push(`Row ${rowNumber}: Missing required field "${field}"`)
-          rowValid = false
-        }
-      })
+             // Special validation for pending tab (gift requests)
+       if (tab === "pending") {
+         try {
+                       // First, validate memberLogin exists and get VIP player data
+            if (!row.memberLogin || row.memberLogin.toString().trim() === "") {
+              errors.push(`Row ${rowNumber}: Missing required field "memberLogin"`)
+              rowValid = false
+            } else {
+              const vipPlayer = getVIPPlayerFromMemberLogin(row.memberLogin)
+              if (!vipPlayer) {
+                errors.push(`Row ${rowNumber}: Member login "${row.memberLogin.trim()}" not found in database`)
+                rowValid = false
+              } else {
+                // Now transform CSV row to match Zod schema format with the VIP player data
+                const giftRequestData = {
+                  vipId: vipPlayer.vipId,
+                  memberName: vipPlayer.memberName,
+                  memberLogin: vipPlayer.memberLogin,
+                  giftItem: row.giftItem || "",
+                  rewardName: row.rewardName || "",
+                  rewardClubOrder: row.rewardClubOrder || "",
+                  value: row.costMyr?.toString() || "",
+                  remark: row.remark || "",
+                  category: row.category || "",
+                }
 
-      // Check field types
-      if (rules.fieldTypes) {
-        Object.entries(rules.fieldTypes).forEach(([field, expectedType]) => {
-          if (row[field]) {
-            if (Array.isArray(expectedType)) {
-              if (!expectedType.includes(row[field])) {
-                errors.push(`Row ${rowNumber}: Invalid value for "${field}". Expected one of: ${expectedType.join(", ")}`)
-                rowValid = false
-              }
-            } else if (expectedType === "number") {
-              if (isNaN(Number(row[field]))) {
-                errors.push(`Row ${rowNumber}: "${field}" must be a number`)
-                rowValid = false
-              }
-            }
+               // Validate using Zod schema
+               const validatedData = giftRequestFormSchema.parse(giftRequestData)
+
+               if (rowValid) {
+                 validData.push({
+                   ...validatedData,
+                   memberLogin: row.memberLogin.trim(), // Keep original memberLogin for reference
+                   _rowNumber: rowNumber,
+                   _uploadDate: new Date().toISOString(),
+                   _uploadedBy: user?.id! // This would come from auth context
+                 })
+               }
+             }
+           }
+         } catch (zodError: any) {
+           // Handle Zod validation errors
+           if (zodError.issues) {
+             zodError.issues.forEach((issue: any) => {
+               const fieldName = issue.path.join('.')
+               errors.push(`Row ${rowNumber}: ${issue.message} (field: ${fieldName})`)
+             })
+           } else {
+             errors.push(`Row ${rowNumber}: Validation error - ${zodError.message}`)
+           }
+           rowValid = false
+         }
+      } else {
+        // Original validation for other tabs
+        // Check required fields
+        rules.requiredFields?.forEach((field: string) => {
+          if (!row[field] || row[field].toString().trim() === "") {
+            errors.push(`Row ${rowNumber}: Missing required field "${field}"`)
+            rowValid = false
           }
         })
-      }
 
-      // Check for duplicate gift IDs in processing tab
-      if (tab === "processing" && row.giftId) {
-        const existingGift = validData.find(item => item.giftId === row.giftId)
-        if (existingGift) {
-          warnings.push(`Row ${rowNumber}: Duplicate gift ID "${row.giftId}"`)
+        // Check field types
+        if (rules.fieldTypes) {
+          Object.entries(rules.fieldTypes).forEach(([field, expectedType]) => {
+            if (row[field]) {
+              if (Array.isArray(expectedType)) {
+                if (!expectedType.includes(row[field])) {
+                  errors.push(`Row ${rowNumber}: Invalid value for "${field}". Expected one of: ${expectedType.join(", ")}`)
+                  rowValid = false
+                }
+              } else if (expectedType === "number") {
+                if (isNaN(Number(row[field]))) {
+                  errors.push(`Row ${rowNumber}: "${field}" must be a number`)
+                  rowValid = false
+                }
+              }
+            }
+          })
         }
-      }
 
-      if (rowValid) {
-        validData.push({
-          ...row,
-          _rowNumber: rowNumber,
-          _uploadDate: new Date().toISOString(),
-          _uploadedBy: "current-user" // This would come from auth context
-        })
+        // Check for duplicate gift IDs in processing tab
+        if (tab === "processing" && row.giftId) {
+          const existingGift = validData.find(item => item.giftId === row.giftId)
+          if (existingGift) {
+            warnings.push(`Row ${rowNumber}: Duplicate gift ID "${row.giftId}"`)
+          }
+        }
+
+        if (rowValid) {
+          validData.push({
+            ...row,
+            _rowNumber: rowNumber,
+            _uploadDate: new Date().toISOString(),
+            _uploadedBy: user?.id! // This would come from auth context
+          })
+        }
       }
     })
 
@@ -199,8 +274,12 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete }: Bul
         body: JSON.stringify({
           tab,
           data: validationResult.data,
-          transactionId: `bulk_${Date.now()}`,
-          uploadedBy: "current-user" // This would come from auth context
+          batchId: `bulk_${Date.now()}`,
+          uploadedBy: user?.id || "unknown-user",
+          userDisplayName: user?.name || user?.email || user?.id || "unknown-user",
+          userId: user?.id || "unknown-user",
+          userRole: user?.role || "unknown-role",
+          userPermissions: user?.permissions || {}
         }),
       })
 
@@ -223,7 +302,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete }: Bul
   }
 
   const handleRollback = async () => {
-    if (!uploadResult?.transactionId) return
+          if (!uploadResult?.batchId) return
 
     try {
       setIsUploading(true)
@@ -234,7 +313,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete }: Bul
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          transactionId: uploadResult.transactionId
+          batchId: uploadResult.batchId
         }),
       })
 
@@ -258,9 +337,29 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete }: Bul
 
   const downloadTemplate = () => {
     const rules = getValidationRules()
-    const template = {
+    
+    let template: any = {
       headers: [...(rules.requiredFields || []), ...(rules.optionalFields || [])],
-      sample: rules.requiredFields?.reduce((acc: any, field: string) => {
+      sample: {}
+    }
+
+         // Special template for pending tab (gift requests)
+     if (tab === "pending") {
+       template = {
+         headers: ["memberLogin", "giftItem", "costMyr", "category", "rewardName", "rewardClubOrder", "remark"],
+         sample: {
+           memberLogin: "user123",
+           giftItem: "Gift Card",
+           costMyr: "100",
+           category: "Birthday",
+           rewardName: "Birthday Reward",
+           rewardClubOrder: "RCO-001",
+           remark: "VIP birthday gift"
+         }
+       }
+    } else {
+      // Default template for other tabs
+      template.sample = rules.requiredFields?.reduce((acc: any, field: string) => {
         acc[field] = `Sample ${field}`
         return acc
       }, {}) || {}
@@ -484,7 +583,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete }: Bul
                   <Alert>
                     <CheckCircle className="h-4 w-4" />
                     <AlertDescription>
-                      <p className="font-semibold">Transaction ID: {uploadResult.transactionId}</p>
+                      <p className="font-semibold">Batch ID: {uploadResult.batchId}</p>
                       <p className="text-sm text-gray-600 mt-1">
                         Keep this ID for rollback purposes if needed.
                       </p>

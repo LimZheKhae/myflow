@@ -87,66 +87,54 @@ The bulk upload system provides a comprehensive solution for importing large dat
 ### **Main Tables**
 
 ```sql
--- Gift Requests Table
-CREATE TABLE MY_FLOW.PUBLIC.GIFT_REQUESTS (
-  ID VARCHAR PRIMARY KEY,
-  DATE DATE,
-  PIC VARCHAR,
-  MEMBER_LOGIN VARCHAR,
-  PLAYER_NAME VARCHAR,
-  PHONE_NUMBER VARCHAR,
-  ADDRESS VARCHAR,
-  GIFT VARCHAR,
-  COST DECIMAL(10,2),
-  CURRENCY VARCHAR,
-  REMARK TEXT,
-  CATEGORY VARCHAR,
-  WORKFLOW_STATUS VARCHAR,
-  TRANSACTION_ID VARCHAR,
-  UPLOADED_BY VARCHAR,
-  UPLOADED_AT TIMESTAMP,
-  -- MKTOps fields
-  MKTOPS_DISPATCHER VARCHAR,
-  MKTOPS_TRACKING_CODE VARCHAR,
-  MKTOPS_STATUS VARCHAR,
-  -- KAM Proof fields
-  KAM_PROOF_FILE VARCHAR,
-  KAM_RECEIVER_FEEDBACK TEXT,
-  KAM_UPLOADED_BY VARCHAR,
-  KAM_UPLOADED_DATE TIMESTAMP,
-  -- SalesOps fields
-  SALESOPS_CHECKER_NAME VARCHAR,
-  SALESOPS_REMARK TEXT,
-  SALESOPS_CHECKED_DATE TIMESTAMP
+-- Gift Details Table (Master Table)
+CREATE OR REPLACE TABLE MY_FLOW.PUBLIC.GIFT_DETAILS (
+  GIFT_ID NUMBER(38,0) NOT NULL AUTOINCREMENT START 100 INCREMENT 1 ORDER,
+  VIP_ID NUMBER(38,0),
+  BATCH_ID NUMBER(38,0),
+  KAM_REQUESTED_BY VARCHAR(16777216),
+  CREATED_DATE TIMESTAMP_NTZ(9),
+  WORKFLOW_STATUS VARCHAR(16777216),
+  MEMBER_LOGIN VARCHAR(16777216),
+  FULL_NAME VARCHAR(16777216),
+  PHONE VARCHAR(16777216),
+  ADDRESS VARCHAR(16777216),
+  REWARD_NAME VARCHAR(16777216),
+  GIFT_ITEM VARCHAR(16777216),
+  COST_MYR NUMBER(38,0),
+  COST_VND NUMBER(38,0),
+  REMARK VARCHAR(16777216),
+  REWARD_CLUB_ORDER VARCHAR(16777216),
+  CATEGORY VARCHAR(16777216),
+  APPROVAL_REVIEWED_BY NUMBER(38,0),
+  DISPATCHER VARCHAR(16777216),
+  TRACKING_CODE VARCHAR(16777216),
+  TRACKING_STATUS VARCHAR(16777216),
+  PURCHASED_BY NUMBER(38,0),
+  MKT_PURCHASE_DATE TIMESTAMP_NTZ(9),
+  UPLOADED_BO BOOLEAN,
+  MKT_PROOF VARCHAR(16777216),
+  MKT_PROOF_BY NUMBER(38,0),
+  KAM_PROOF VARCHAR(16777216),
+  KAM_PROOF_BY NUMBER(38,0),
+  GIFT_FEEDBACK VARCHAR(16777216),
+  AUDITED_BY NUMBER(38,0),
+  AUDIT_DATE TIMESTAMP_NTZ(9),
+  AUDIT_REMARK VARCHAR(16777216),
+  LAST_MODIFIED_DATE TIMESTAMP_NTZ(9),
+  PRIMARY KEY (GIFT_ID)
 );
 
--- Bulk Import Logs
-CREATE TABLE MY_FLOW.PUBLIC.BULK_IMPORT_LOGS (
-  TRANSACTION_ID VARCHAR PRIMARY KEY,
-  MODULE VARCHAR,
-  TAB VARCHAR,
-  UPLOADED_BY VARCHAR,
-  TOTAL_ROWS INTEGER,
-  SUCCESSFUL_ROWS INTEGER,
-  FAILED_ROWS INTEGER,
-  STATUS VARCHAR, -- COMPLETED, FAILED, ROLLED_BACK
-  ERROR_MESSAGE TEXT,
-  CREATED_AT TIMESTAMP,
-  ROLLBACK_DATE TIMESTAMP,
-  ROLLED_BACK_ROWS INTEGER
-);
-
--- Bulk Rollback Logs
-CREATE TABLE MY_FLOW.PUBLIC.BULK_ROLLBACK_LOGS (
-  ID VARCHAR PRIMARY KEY,
-  TRANSACTION_ID VARCHAR,
-  MODULE VARCHAR,
-  TAB VARCHAR,
-  ROLLED_BACK_BY VARCHAR,
-  ROLLED_BACK_ROWS INTEGER,
-  ORIGINAL_TOTAL_ROWS INTEGER,
-  ORIGINAL_SUCCESSFUL_ROWS INTEGER,
-  CREATED_AT TIMESTAMP
+-- Bulk Import Batches Table
+CREATE OR REPLACE TABLE MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES (
+  BATCH_ID NUMBER(38,0) NOT NULL AUTOINCREMENT START 10 INCREMENT 1 ORDER,
+  BATCH_NAME VARCHAR(200),  -- Format: BATCH_{user name}_{date time}
+  UPLOADED_BY VARCHAR(100),
+  TOTAL_ROWS NUMBER(38,0),
+  IS_ACTIVE BOOLEAN DEFAULT TRUE,
+  CREATED_DATE TIMESTAMP_NTZ(9),
+  COMPLETED_AT TIMESTAMP_NTZ(9),
+  PRIMARY KEY (BATCH_ID)
 );
 ```
 
@@ -166,15 +154,23 @@ CREATE TABLE MY_FLOW.PUBLIC.BULK_ROLLBACK_LOGS (
 2. **Upload File** - Select CSV file (max 5MB)
 3. **Validation** - Automatic data validation
 4. **Preview** - Review data before import
-5. **Import** - Execute database transaction
-6. **Result** - View import results and transaction ID
+5. **Import** - Execute database transaction (INSERT INTO GIFT_DETAILS)
+6. **Result** - View import results and batch ID
 
-### **3. Rollback Process**
+### **3. Workflow Updates**
 
-1. **Access Result Tab** - View transaction details
-2. **Click Rollback** - Initiate rollback process
-3. **Confirmation** - Verify rollback completion
-4. **Audit Trail** - Check rollback logs
+After bulk import, different tabs will UPDATE the GIFT_DETAILS rows accordingly:
+
+- **Pending Tab**: INSERT new gift requests (WORKFLOW_STATUS = 'KAM_Request')
+- **Processing Tab**: UPDATE tracking information (DISPATCHER, TRACKING_CODE, etc.)
+- **KAM Proof Tab**: UPDATE proof and feedback (KAM_PROOF, GIFT_FEEDBACK)
+- **Audit Tab**: UPDATE audit information (AUDITED_BY, AUDIT_REMARK)
+
+### **4. Batch Management**
+
+- Each bulk import creates a record in BULK_IMPORT_BATCHES
+- Batch ID is linked to GIFT_DETAILS records via BATCH_ID field
+- Batch status can be TRUE or FALSE for filtering (IS_ACTIVE boolean field)
 
 ## 📁 **File Structure**
 
@@ -232,20 +228,21 @@ app/
 - **Error Logging** - Detailed error tracking
 - **User Feedback** - Clear error messages
 
-## 🔄 **Rollback Capabilities**
+## 🔄 **Batch Management**
 
-### **Automatic Rollback**
+### **Batch Tracking**
 
-- **Transaction Failure** - Automatic rollback
-- **Validation Errors** - No data inserted
-- **System Errors** - Complete rollback
+- **Batch ID Generation** - Auto-incrementing batch IDs (starts at 10)
+- **Batch Status Management** - TRUE/FALSE status control (IS_ACTIVE boolean)
+- **Batch Filtering** - Only ACTIVE batches shown in gift listings
+- **Batch History** - Complete audit trail of all batch operations
 
-### **Manual Rollback**
+### **Data Integrity**
 
-- **User-Initiated** - Via UI button
-- **Transaction ID** - Unique identifier tracking
-- **Audit Trail** - Complete rollback logging
-- **Data Integrity** - Maintains referential integrity
+- **Referential Integrity** - BATCH_ID links to BULK_IMPORT_BATCHES
+- **Workflow Consistency** - All updates maintain workflow status
+- **Audit Trail** - Complete history of all operations
+- **Status Tracking** - Real-time status updates across workflow stages
 
 ## 📈 **Performance Considerations**
 
@@ -274,19 +271,24 @@ Content-Type: application/json
 {
   "tab": "pending",
   "data": [...],
-  "transactionId": "bulk_1234567890",
+  "batchName": "January Birthday Gifts",
   "uploadedBy": "user@example.com"
 }
 ```
 
-### **Bulk Rollback**
+### **Batch Management**
 
 ```http
-POST /api/gift-approval/bulk-rollback
+GET /api/gift-approval/batches
+Content-Type: application/json
+
+PUT /api/gift-approval/batches
 Content-Type: application/json
 
 {
-  "transactionId": "bulk_1234567890"
+  "batchId": 123,
+  "isActive": false,
+  "updatedBy": "admin@example.com"
 }
 ```
 
@@ -315,8 +317,8 @@ GFT002,FedEx,FDX987654321,Delivered
 1. **CSV Format Errors** - Use provided templates
 2. **Permission Denied** - Check user role and permissions
 3. **Validation Failures** - Review error messages
-4. **Import Failures** - Check transaction logs
-5. **Rollback Issues** - Verify transaction ID
+4. **Import Failures** - Check batch creation logs
+5. **Batch Status Issues** - Verify batch is ACTIVE (IS_ACTIVE = TRUE)
 
 ### **Debug Steps**
 
@@ -325,6 +327,7 @@ GFT002,FedEx,FDX987654321,Delivered
 3. **Verify Database Logs** - Snowflake query history
 4. **Check Permission Matrix** - User role validation
 5. **Validate CSV Format** - Template comparison
+6. **Check Batch Status** - Ensure batch is ACTIVE in BULK_IMPORT_BATCHES (IS_ACTIVE = TRUE)
 
 ## 🚀 **Future Enhancements**
 
@@ -336,4 +339,7 @@ GFT002,FedEx,FDX987654321,Delivered
 - [ ] **Advanced Analytics** - Import performance metrics
 - [ ] **Template Management** - Custom template creation
 - [ ] **Bulk Export** - Reverse operation support
+- [ ] **Batch Rollback** - Ability to deactivate entire batches
+- [ ] **Batch Merging** - Combine multiple batches
+- [ ] **Batch Analytics** - Performance metrics per batch
 

@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Include gifts from ACTIVE batches or manual gifts (no batch)
-    whereConditions.push("(BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE STATUS != 'INACTIVE'))");
+          whereConditions.push("(BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE IS_ACTIVE != FALSE))");
 
     const whereClause = whereConditions.join(" AND ");
 

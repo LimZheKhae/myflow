@@ -116,12 +116,14 @@ ADD COLUMN BATCH_ID VARCHAR(50);
 #### **Rollback Process:**
 
 ```sql
--- For pending gifts: DELETE records
-DELETE FROM GIFT_REQUESTS WHERE BATCH_ID = 'BATCH_123';
+-- For all tabs: Update IS_ACTIVE to FALSE (soft delete)
+UPDATE MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES 
+SET IS_ACTIVE = FALSE, COMPLETED_AT = CURRENT_TIMESTAMP()
+WHERE BATCH_ID = 'BATCH_123';
 
--- For updates: REVERT to previous state
-UPDATE GIFT_REQUESTS
-SET WORKFLOW_STATUS = 'KAM_Request', BATCH_ID = NULL
+-- Remove BATCH_ID from GIFT_DETAILS to make them invisible
+UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
+SET BATCH_ID = NULL, LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
 WHERE BATCH_ID = 'BATCH_123';
 ```
 
@@ -210,7 +212,7 @@ const result = await attemptImport(csvData);
 1. **Identify Batch**
 
    ```typescript
-   // Find batch by transaction ID or batch ID
+   // Find batch by batch ID
    const batch = await getBatchDetails(batchId);
    ```
 
@@ -255,7 +257,7 @@ const result = await attemptImport(csvData);
 #### **After Upload:**
 
 - ✅ **Success Confirmation**: Clear success message
-- ✅ **Transaction ID**: Reference for tracking
+- ✅ **Batch ID**: Reference for tracking
 - ✅ **Rollback Option**: Easy rollback process
 - ✅ **Audit Trail**: Complete history
 
@@ -319,7 +321,7 @@ GROUP BY TAB;
 ### **1. Immediate Rollback**
 
 ```bash
-# Rollback by batch ID
+# Rollback by batch ID (soft delete - sets IS_ACTIVE = FALSE)
 curl -X POST /api/gift-approval/bulk-rollback \
   -H "Content-Type: application/json" \
   -d '{"batchId": "BATCH_123", "rollbackReason": "Wrong data"}'
@@ -328,20 +330,20 @@ curl -X POST /api/gift-approval/bulk-rollback \
 ### **2. Data Recovery**
 
 ```sql
--- Find affected records
-SELECT * FROM GIFT_REQUESTS WHERE BATCH_ID = 'BATCH_123';
+-- Find affected records (including rolled back ones)
+SELECT * FROM MY_FLOW.PUBLIC.GIFT_DETAILS WHERE BATCH_ID = 'BATCH_123';
 
--- Check rollback history
-SELECT * FROM BULK_ROLLBACK_LOGS WHERE BATCH_ID = 'BATCH_123';
+-- Check batch status
+SELECT * FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE BATCH_ID = 'BATCH_123';
 ```
 
 ### **3. Manual Corrections**
 
 ```sql
 -- Update specific records
-UPDATE GIFT_REQUESTS
-SET COST = 1000, CURRENCY = 'MYR'
-WHERE ID = 'GFT_123' AND BATCH_ID = 'BATCH_123';
+UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS
+SET COST_MYR = 1000, CATEGORY = 'Birthday'
+WHERE GIFT_ID = 123 AND BATCH_ID = 'BATCH_123';
 ```
 
 ## 🎯 **Best Practices**
@@ -350,7 +352,7 @@ WHERE ID = 'GFT_123' AND BATCH_ID = 'BATCH_123';
 
 1. **Always download and use templates**
 2. **Preview data before import**
-3. **Keep transaction IDs for reference**
+3. **Keep batch IDs for reference**
 4. **Test with small datasets first**
 5. **Verify data after import**
 

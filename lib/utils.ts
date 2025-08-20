@@ -1,9 +1,46 @@
-import { clsx, type ClassValue } from "clsx"
+import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 import type { DateRange } from "react-day-picker"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+/**
+ * Debug SQL function to log SQL queries and their parameters
+ * @param sql - The SQL query string with placeholders
+ * @param params - The parameters array to bind to the SQL
+ * @param label - Optional label for the log (default: "SQL Debug")
+ */
+export function debugSQL(sql: string, params: any[] = [], label: string = "SQL Debug") {
+  console.log(`\n🔍 ${label}:`);
+  console.log("📝 SQL Query:", sql);
+  console.log("📊 Parameters:", params);
+  
+  // Create a formatted version showing parameter types
+  const paramDetails = params.map((param, index) => ({
+    position: index + 1,
+    value: param,
+    type: typeof param,
+    isNull: param === null,
+    isUndefined: param === undefined
+  }));
+  
+  console.log("🔢 Parameter Details:", paramDetails);
+  
+  // Show the query with actual values (for debugging only - don't use in production)
+  let debugQuery = sql;
+  params.forEach((param, index) => {
+    const placeholder = `?`;
+    const value = param === null ? 'NULL' : 
+                  param === undefined ? 'UNDEFINED' : 
+                  typeof param === 'string' ? `'${param}'` : 
+                  String(param);
+    debugQuery = debugQuery.replace(placeholder, value);
+  });
+  
+  console.log("🎯 Debug Query (with values):", debugQuery);
+  console.log("─".repeat(80));
 }
 
 // Global export function for CSV export
@@ -172,4 +209,52 @@ export const formatDateRangeLabel = (
     return ` - ${formatter(range.to)}`
   }
   return "Select date range"
+}
+
+/**
+ * Convert Snowflake file URL to our proxy endpoint URL for image display
+ * @param snowflakeUrl - The Snowflake file URL (e.g., https://sm23176.ap-northeast-1.aws.snowflakecomputing.com/api/files/MY_FLOW/PUBLIC/IMAGE_FILES/mkt-proof-131-1755677533103.jpg)
+ * @returns Our proxy endpoint URL for serving the image
+ */
+export function getImageProxyUrl(snowflakeUrl: string | null): string | null {
+  if (!snowflakeUrl) return null;
+  
+  try {
+    // Extract filename from Snowflake URL
+    // URL format: https://sm23176.ap-northeast-1.aws.snowflakecomputing.com/api/files/MY_FLOW/PUBLIC/IMAGE_FILES/filename.jpg
+    const urlParts = snowflakeUrl.split('/');
+    const filename = urlParts[urlParts.length - 1];
+    
+    if (!filename) return null;
+    
+    // Create our proxy endpoint URL - using the same format as the working test-imageupload
+    return `/api/gift-approval/serve-image?filename=${encodeURIComponent(filename)}&stage=MY_FLOW.PUBLIC.IMAGE_FILES`;
+  } catch (error) {
+    console.error('Error parsing Snowflake URL:', error);
+    return null;
+  }
+}
+
+/**
+ * Convert Snowflake file URL to our download endpoint URL
+ * @param snowflakeUrl - The Snowflake file URL (e.g., https://sm23176.ap-northeast-1.aws.snowflakecomputing.com/api/files/MY_FLOW/PUBLIC/IMAGE_FILES/mkt-proof-131-1755677533103.jpg)
+ * @returns Our download endpoint URL for downloading the image
+ */
+export function getImageDownloadUrl(snowflakeUrl: string | null): string | null {
+  if (!snowflakeUrl) return null;
+  
+  try {
+    // Extract filename from Snowflake URL
+    // URL format: https://sm23176.ap-northeast-1.aws.snowflakecomputing.com/api/files/MY_FLOW/PUBLIC/IMAGE_FILES/filename.jpg
+    const urlParts = snowflakeUrl.split('/');
+    const filename = urlParts[urlParts.length - 1];
+    
+    if (!filename) return null;
+    
+    // Create our download endpoint URL
+    return `/api/gift-approval/download-image/${encodeURIComponent(filename)}`;
+  } catch (error) {
+    console.error('Error parsing Snowflake URL:', error);
+    return null;
+  }
 }

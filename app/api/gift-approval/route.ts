@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Show gifts from ACTIVE batches or manual gifts (no batch)
-    whereConditions.push("(BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE STATUS != 'INACTIVE'))");
+    whereConditions.push("(BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE IS_ACTIVE = TRUE))");
 
     const whereClause = whereConditions.join(" AND ");
 
@@ -85,40 +85,41 @@ export async function GET(request: NextRequest) {
 
     // Fetch paginated data
     const dataSQL = `
-      SELECT 
-        GIFT_ID,
-        VIP_ID,
-        BATCH_ID,
-        KAM_REQUESTED_BY,
-        CREATED_DATE,
-        WORKFLOW_STATUS,
-        MEMBER_LOGIN,
-        FULL_NAME,
-        PHONE,
-        ADDRESS,
-        REWARD_NAME,
-        GIFT_ITEM,
-        COST_MYR,
-        COST_VND,
-        REMARK,
-        REWARD_CLUB_ORDER,
-        CATEGORY,
-        APPROVAL_REVIEWED_BY,
-        DISPATCHER,
-        TRACKING_CODE,
-        TRACKING_STATUS,
-        PURCHASED_BY,
-        MKT_PURCHASE_DATE,
-        UPLOADED_BO,
-        MKT_PROOF,
-        MKT_PROOF_BY,
-        KAM_PROOF,
-        KAM_PROOF_BY,
-        GIFT_FEEDBACK,
-        AUDITED_BY,
-        AUDIT_DATE,
-        AUDIT_REMARK,
-        LAST_MODIFIED_DATE
+             SELECT 
+         GIFT_ID,
+         VIP_ID,
+         BATCH_ID,
+         KAM_REQUESTED_BY,
+         CREATED_DATE,
+         WORKFLOW_STATUS,
+         MEMBER_LOGIN,
+         FULL_NAME,
+         PHONE,
+         ADDRESS,
+         REWARD_NAME,
+         GIFT_ITEM,
+         COST_MYR,
+         COST_VND,
+         REMARK,
+         REWARD_CLUB_ORDER,
+         CATEGORY,
+         APPROVAL_REVIEWED_BY,
+         DISPATCHER,
+         TRACKING_CODE,
+         TRACKING_STATUS,
+         PURCHASED_BY,
+         MKT_PURCHASE_DATE,
+         UPLOADED_BO,
+         MKT_PROOF,
+         MKT_PROOF_BY,
+         KAM_PROOF,
+         KAM_PROOF_BY,
+         GIFT_FEEDBACK,
+         AUDITED_BY,
+         AUDIT_DATE,
+         AUDIT_REMARK,
+         REJECT_REASON,
+         LAST_MODIFIED_DATE
       FROM MY_FLOW.PUBLIC.GIFT_DETAILS
       WHERE ${whereClause}
       ORDER BY CREATED_DATE DESC, GIFT_ID DESC
@@ -163,6 +164,7 @@ export async function GET(request: NextRequest) {
       auditedBy: row.AUDITED_BY,
       auditDate: row.AUDIT_DATE ? new Date(row.AUDIT_DATE) : null,
       auditRemark: row.AUDIT_REMARK,
+      rejectReason: row.REJECT_REASON,
       lastModifiedDate: row.LAST_MODIFIED_DATE ? new Date(row.LAST_MODIFIED_DATE) : null,
     }));
 
