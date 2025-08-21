@@ -13,13 +13,12 @@ import { toast } from "sonner"
 import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Download, Eye, Database } from "lucide-react"
 import Papa from "papaparse"
 import { giftRequestFormSchema } from "@/types/gift"
-import { getVIPPlayerByLogin } from "@/lib/vip-players"
 
 interface BulkUploadDialogProps {
   module: string
   tab: string
   trigger: React.ReactNode
-  onUploadComplete?: (data: any[]) => void
+  onUploadComplete?: (data: any) => void  // Changed from any[] to any to support result object
   user?: {
     id: string;
     name?: string;
@@ -59,10 +58,11 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
     const rules: Record<string, Record<string, any>> = {
       "gift-approval": {
         pending: {
-          requiredFields: ["memberLogin", "giftItem", "costMyr", "category"],
-          optionalFields: ["rewardName", "rewardClubOrder", "remark"],
+          requiredFields: ["memberLogin", "giftItem", "category"],
+          optionalFields: ["rewardName", "rewardClubOrder", "remark", "costMyr", "costVnd"],
           fieldTypes: {
             costMyr: "number",
+            costVnd: "number",
             category: ["Birthday", "Retention", "High Roller", "Promotion", "Other"]
           }
         },
@@ -87,16 +87,225 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
     return rules[module]?.[tab] || {}
   }
 
-  // Get VIP player data from memberLogin (using hardcoded data until database is ready)
-  const getVIPPlayerFromMemberLogin = (memberLogin: string) => {
+  // Get member data from memberLogin (using database validation)
+  const getMemberFromMemberLogin = (memberLogin: string) => {
     // Trim the memberLogin to handle whitespace
     const trimmedMemberLogin = memberLogin.trim()
     
     if (trimmedMemberLogin && trimmedMemberLogin.length > 0) {
-      return getVIPPlayerByLogin(trimmedMemberLogin)
+      // This will be replaced by the bulk validation API
+      // For now, return null to force bulk validation
+      return null
     }
     
     return null
+  }
+
+  // Bulk validate member logins using the fast API
+  const bulkValidateMemberLogins = async (memberLogins: string[]) => {
+    try {
+      console.log('🚀 Attempting bulk validation for', memberLogins.length, 'member logins...')
+      
+      const response = await fetch('/api/players/validate-fast', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          memberLogins: memberLogins
+        })
+      })
+
+      console.log('📡 API Response status:', response.status, response.statusText)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('❌ API Error Response:', errorText)
+        throw new Error(`Failed to validate member logins: ${response.status} ${response.statusText}`)
+      }
+
+      const result = await response.json()
+      console.log('✅ Bulk validation result:', result)
+      
+      if (!result.success) {
+        console.error('❌ API returned success: false:', result.message)
+        throw new Error(`API Error: ${result.message}`)
+      }
+      
+      return result.data
+    } catch (error) {
+      console.error('❌ Error in bulk validation:', error)
+      // Fall back to individual validation if bulk fails
+      return null
+    }
+  }
+
+  // Enhanced CSV validation with bulk member login validation
+  const validateCSVWithBulkValidation = async (csvData: any[]): Promise<ValidationResult> => {
+    const rules = getValidationRules()
+    const errors: string[] = []
+    const warnings: string[] = []
+    const validData: any[] = []
+
+    if (tab === "pending") {
+      // Step 1: Extract all member logins for bulk validation
+      const memberLogins = csvData
+        .map(row => row.memberLogin?.toString().trim())
+        .filter(login => login && login.length > 0)
+
+      // Step 2: Bulk validate member logins if we have any
+      let validationMap: Map<string, any> = new Map()
+      
+      if (memberLogins.length > 0) {
+        console.log(`🚀 Bulk validating ${memberLogins.length} member logins against member database...`)
+        const startTime = Date.now()
+        
+        const bulkValidationResult = await bulkValidateMemberLogins(memberLogins)
+        
+        if (bulkValidationResult) {
+          // Create a map for fast lookup
+          bulkValidationResult.valid.forEach((player: any) => {
+            validationMap.set(player.memberLogin.toLowerCase(), {
+              vipId: "1", // Default VIP ID for now
+              memberName: player.memberName,
+              memberLogin: player.memberLogin,
+              memberId: player.memberId
+            })
+          })
+          
+          const endTime = Date.now()
+          console.log(`✅ Member validation completed: ${bulkValidationResult.valid.length} valid, ${bulkValidationResult.invalid.length} invalid in ${endTime - startTime}ms`)
+          
+          if (bulkValidationResult.invalid.length > 0) {
+            warnings.push(`⚠️ Found ${bulkValidationResult.invalid.length} invalid member logins that will be flagged during row validation`)
+          }
+        } else {
+          // Fall back to individual validation
+          console.log('❌ Bulk validation failed, falling back to individual validation')
+          memberLogins.forEach(login => {
+            const member = getMemberFromMemberLogin(login)
+            if (member) {
+              validationMap.set(login.toLowerCase(), member)
+            }
+          })
+        }
+      }
+
+      // Step 3: Validate each row using the validation map
+      csvData.forEach((row, index) => {
+        const rowNumber = index + 2 // +2 because index starts at 0 and we skip header
+        let rowValid = true
+
+        try {
+          // Trim all string values first
+          Object.keys(row).forEach(key => {
+            if (typeof row[key] === 'string') {
+              row[key] = row[key].trim()
+            }
+          })
+
+          // Validate memberLogin exists and get VIP player data
+          if (!row.memberLogin || row.memberLogin.toString().trim() === "") {
+            errors.push(`Row ${rowNumber}: Missing required field "memberLogin"`)
+            rowValid = false
+          } else {
+            const trimmedLogin = row.memberLogin.toString().trim().toLowerCase()
+            const memberData = validationMap.get(trimmedLogin)
+            
+            if (!memberData) {
+              errors.push(`Row ${rowNumber}: Member login "${row.memberLogin.trim()}" not found in member database`)
+              rowValid = false
+            } else {
+              // Validate giftItem is required
+              if (!row.giftItem || row.giftItem.toString().trim() === "") {
+                errors.push(`Row ${rowNumber}: Missing required field "giftItem"`)
+                rowValid = false
+              }
+
+              // Validate category is required
+              if (!row.category || row.category.toString().trim() === "") {
+                errors.push(`Row ${rowNumber}: Missing required field "category"`)
+                rowValid = false
+              } else if (!["Birthday", "Retention", "High Roller", "Promotion", "Other"].includes(row.category)) {
+                errors.push(`Row ${rowNumber}: Invalid category. Expected one of: Birthday, Retention, High Roller, Promotion, Other`)
+                rowValid = false
+              }
+
+              // Validate costMyr and costVnd (at least one must be provided and positive)
+              const costMyr = row.costMyr ? parseFloat(row.costMyr) : null
+              const costVnd = row.costVnd ? parseFloat(row.costVnd) : null
+
+              if (costMyr !== null && (isNaN(costMyr) || costMyr <= 0)) {
+                errors.push(`Row ${rowNumber}: costMyr must be a positive number`)
+                rowValid = false
+              }
+
+              if (costVnd !== null && (isNaN(costVnd) || costVnd <= 0)) {
+                errors.push(`Row ${rowNumber}: costVnd must be a positive number`)
+                rowValid = false
+              }
+
+              if (costMyr === null && costVnd === null) {
+                errors.push(`Row ${rowNumber}: At least one cost value (costMyr or costVnd) must be provided`)
+                rowValid = false
+              }
+
+              if (rowValid) {
+                // Transform CSV row to match Zod schema format with the member data
+                const giftRequestData = {
+                  vipId: "1", // Default VIP ID for now
+                  memberName: memberData.memberName || row.memberLogin.trim(),
+                  memberLogin: row.memberLogin.trim(),
+                  giftItem: row.giftItem.trim(),
+                  rewardName: row.rewardName?.trim() || "",
+                  rewardClubOrder: row.rewardClubOrder?.trim() || "",
+                  value: (costMyr || costVnd || 0).toString(),
+                  remark: row.remark?.trim() || "",
+                  category: row.category.trim(),
+                }
+
+                // Validate using Zod schema
+                const validatedData = giftRequestFormSchema.parse(giftRequestData)
+
+                validData.push({
+                  ...validatedData,
+                  memberLogin: row.memberLogin.trim(),
+                  costMyr: costMyr,
+                  costVnd: costVnd,
+                  _rowNumber: rowNumber,
+                  _uploadDate: new Date().toISOString(),
+                  _uploadedBy: user?.id!
+                })
+              }
+            }
+          }
+        } catch (zodError: any) {
+          // Handle Zod validation errors
+          if (zodError.issues) {
+            zodError.issues.forEach((issue: any) => {
+              const fieldName = issue.path.join('.')
+              errors.push(`Row ${rowNumber}: ${issue.message} (field: ${fieldName})`)
+            })
+          } else {
+            errors.push(`Row ${rowNumber}: Validation error - ${zodError.message}`)
+          }
+          rowValid = false
+        }
+      })
+    } else {
+      // Use existing validation for non-pending tabs
+      return validateCSV(csvData)
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings,
+      data: validData,
+      totalRows: csvData.length,
+      validRows: validData.length,
+      invalidRows: csvData.length - validData.length
+    }
   }
 
   const validateCSV = useCallback((csvData: any[]): ValidationResult => {
@@ -112,39 +321,82 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
              // Special validation for pending tab (gift requests)
        if (tab === "pending") {
          try {
-                       // First, validate memberLogin exists and get VIP player data
-            if (!row.memberLogin || row.memberLogin.toString().trim() === "") {
-              errors.push(`Row ${rowNumber}: Missing required field "memberLogin"`)
+           // Trim all string values first
+           Object.keys(row).forEach(key => {
+             if (typeof row[key] === 'string') {
+               row[key] = row[key].trim()
+             }
+           })
+
+           // First, validate memberLogin exists and get VIP player data
+           if (!row.memberLogin || row.memberLogin.toString().trim() === "") {
+             errors.push(`Row ${rowNumber}: Missing required field "memberLogin"`)
+             rowValid = false
+                     } else {
+            const member = getMemberFromMemberLogin(row.memberLogin)
+            if (!member) {
+              errors.push(`Row ${rowNumber}: Member login "${row.memberLogin.trim()}" not found in member database`)
               rowValid = false
             } else {
-              const vipPlayer = getVIPPlayerFromMemberLogin(row.memberLogin)
-              if (!vipPlayer) {
-                errors.push(`Row ${rowNumber}: Member login "${row.memberLogin.trim()}" not found in database`)
-                rowValid = false
-              } else {
-                // Now transform CSV row to match Zod schema format with the VIP player data
-                const giftRequestData = {
-                  vipId: vipPlayer.vipId,
-                  memberName: vipPlayer.memberName,
-                  memberLogin: vipPlayer.memberLogin,
-                  giftItem: row.giftItem || "",
-                  rewardName: row.rewardName || "",
-                  rewardClubOrder: row.rewardClubOrder || "",
-                  value: row.costMyr?.toString() || "",
-                  remark: row.remark || "",
-                  category: row.category || "",
-                }
+               // Validate giftItem is required
+               if (!row.giftItem || row.giftItem.toString().trim() === "") {
+                 errors.push(`Row ${rowNumber}: Missing required field "giftItem"`)
+                 rowValid = false
+               }
 
-               // Validate using Zod schema
-               const validatedData = giftRequestFormSchema.parse(giftRequestData)
+               // Validate category is required
+               if (!row.category || row.category.toString().trim() === "") {
+                 errors.push(`Row ${rowNumber}: Missing required field "category"`)
+                 rowValid = false
+               } else if (!["Birthday", "Retention", "High Roller", "Promotion", "Other"].includes(row.category)) {
+                 errors.push(`Row ${rowNumber}: Invalid category. Expected one of: Birthday, Retention, High Roller, Promotion, Other`)
+                 rowValid = false
+               }
+
+               // Validate costMyr and costVnd (at least one must be provided and positive)
+               const costMyr = row.costMyr ? parseFloat(row.costMyr) : null
+               const costVnd = row.costVnd ? parseFloat(row.costVnd) : null
+
+               if (costMyr !== null && (isNaN(costMyr) || costMyr <= 0)) {
+                 errors.push(`Row ${rowNumber}: costMyr must be a positive number`)
+                 rowValid = false
+               }
+
+               if (costVnd !== null && (isNaN(costVnd) || costVnd <= 0)) {
+                 errors.push(`Row ${rowNumber}: costVnd must be a positive number`)
+                 rowValid = false
+               }
+
+               if (costMyr === null && costVnd === null) {
+                 errors.push(`Row ${rowNumber}: At least one cost value (costMyr or costVnd) must be provided`)
+                 rowValid = false
+               }
 
                if (rowValid) {
+                 // Transform CSV row to match Zod schema format with the member data
+                 const giftRequestData = {
+                   vipId: "1", // Default VIP ID for now
+                   memberName: row.memberLogin.trim(), // Use memberLogin as memberName for now
+                   memberLogin: row.memberLogin.trim(),
+                   giftItem: row.giftItem.trim(),
+                   rewardName: row.rewardName?.trim() || "",
+                   rewardClubOrder: row.rewardClubOrder?.trim() || "",
+                   value: (costMyr || costVnd || 0).toString(),
+                   remark: row.remark?.trim() || "",
+                   category: row.category.trim(),
+                 }
+
+                 // Validate using Zod schema
+                 const validatedData = giftRequestFormSchema.parse(giftRequestData)
+
                  validData.push({
                    ...validatedData,
-                   memberLogin: row.memberLogin.trim(), // Keep original memberLogin for reference
+                   memberLogin: row.memberLogin.trim(),
+                   costMyr: costMyr,
+                   costVnd: costVnd,
                    _rowNumber: rowNumber,
                    _uploadDate: new Date().toISOString(),
-                   _uploadedBy: user?.id! // This would come from auth context
+                   _uploadedBy: user?.id!
                  })
                }
              }
@@ -240,8 +492,21 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
         return
       }
 
-      // Validate data
-      const validation = validateCSV(result.data)
+      // Validate data (use bulk validation for pending tab)
+      let validation: ValidationResult
+      if (tab === "pending") {
+        setIsUploading(true)
+        try {
+          validation = await validateCSVWithBulkValidation(result.data)
+        } catch (error) {
+          console.error('Bulk validation failed, falling back to standard validation:', error)
+          validation = validateCSV(result.data)
+        } finally {
+          setIsUploading(false)
+        }
+      } else {
+        validation = validateCSV(result.data)
+      }
       setValidationResult(validation)
 
       if (validation.isValid) {
@@ -288,7 +553,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
       if (result.success) {
         setUploadResult(result)
         toast.success(`Successfully imported ${result.importedCount} records`)
-        onUploadComplete?.(validationResult.data)
+        onUploadComplete?.(result) // Pass the full result object instead of just the data
         setActiveTab("result")
       } else {
         toast.error(`Import failed: ${result.message}`)
@@ -346,15 +611,16 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
          // Special template for pending tab (gift requests)
      if (tab === "pending") {
        template = {
-         headers: ["memberLogin", "giftItem", "costMyr", "category", "rewardName", "rewardClubOrder", "remark"],
+         headers: ["memberLogin", "giftItem", "costMyr", "costVnd", "category", "rewardName", "rewardClubOrder", "remark"],
          sample: {
-           memberLogin: "user123",
+           memberLogin: "john.doe",
            giftItem: "Gift Card",
            costMyr: "100",
+           costVnd: "500000",
            category: "Birthday",
            rewardName: "Birthday Reward",
            rewardClubOrder: "RCO-001",
-           remark: "VIP birthday gift"
+           remark: "Member birthday gift"
          }
        }
     } else {

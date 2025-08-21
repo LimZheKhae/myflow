@@ -1,99 +1,102 @@
-import { NextRequest, NextResponse } from "next/server";
-import { executeQuery } from "@/lib/snowflake/config";
-import { debugSQL } from "@/lib/utils";
-import type { BulkImportResult, PendingTabRow, ProcessingTabRow, KamProofTabRow, AuditTabRow, BulkImportBatch } from "@/types/gift";
+import { NextRequest, NextResponse } from 'next/server'
+import { executeQuery } from '@/lib/snowflake/config'
+import { debugSQL } from '@/lib/utils'
+import type { BulkImportResult, PendingTabRow, ProcessingTabRow, KamProofTabRow, AuditTabRow, BulkImportBatch } from '@/types/gift'
 
 interface BulkImportRequest {
-  tab: string;
-  data: any[];
-  uploadedBy: string;
-  userDisplayName: string;
-  userId: string;
-  userRole?: string;
-  userPermissions?: Record<string, string[]>;
-  batchName?: string;
-  description?: string;
+  tab: string
+  data: any[]
+  uploadedBy: string
+  userDisplayName: string
+  userId: string
+  userRole?: string
+  userPermissions?: Record<string, string[]>
+  batchName?: string
+  description?: string
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { tab, data, uploadedBy, userDisplayName, userId, userRole, userPermissions, batchName: requestBatchName, description }: BulkImportRequest = await request.json();
+    const { tab, data, uploadedBy, userDisplayName, userId, userRole, userPermissions, batchName: requestBatchName, description }: BulkImportRequest = await request.json()
 
     if (!data || data.length === 0) {
       return NextResponse.json({
         success: false,
-        message: "No data provided for import",
+        message: 'No data provided for import',
         importedCount: 0,
         failedCount: 0,
-        batchId: "",
-      } as BulkImportResult);
+        batchId: '',
+      } as BulkImportResult)
     }
 
     // Validate required user information
     if (!userId || typeof userId !== 'string' || userId.trim().length === 0) {
       return NextResponse.json({
         success: false,
-        message: "Invalid user ID format",
+        message: 'Invalid user ID format',
         importedCount: 0,
         failedCount: 0,
-        batchId: "",
-      } as BulkImportResult);
+        batchId: '',
+      } as BulkImportResult)
     }
 
     // Server-side role validation using client-provided data
     if (!userRole) {
       return NextResponse.json({
         success: false,
-        message: "User role is required",
+        message: 'User role is required',
         importedCount: 0,
         failedCount: 0,
-        batchId: "",
-      } as BulkImportResult);
+        batchId: '',
+      } as BulkImportResult)
     }
 
     // Check if user has KAM or Admin role
-    if (!["KAM", "ADMIN"].includes(userRole)) {
+    if (!['KAM', 'ADMIN'].includes(userRole)) {
       return NextResponse.json({
         success: false,
-        message: "Insufficient role permissions. Only KAM and Admin users can perform bulk imports.",
+        message: 'Insufficient role permissions. Only KAM and Admin users can perform bulk imports.',
         importedCount: 0,
         failedCount: 0,
-        batchId: "",
-      } as BulkImportResult);
+        batchId: '',
+      } as BulkImportResult)
     }
 
     // Check if user has ADD permission for gift-approval module
-    if (!userPermissions || !userPermissions["gift-approval"] || !userPermissions["gift-approval"].includes("ADD")) {
+    if (!userPermissions || !userPermissions['gift-approval'] || !userPermissions['gift-approval'].includes('ADD')) {
       return NextResponse.json({
         success: false,
-        message: "Insufficient module permissions. ADD permission required for gift-approval module.",
+        message: 'Insufficient module permissions. ADD permission required for gift-approval module.',
         importedCount: 0,
         failedCount: 0,
-        batchId: "",
-      } as BulkImportResult);
+        batchId: '',
+      } as BulkImportResult)
     }
 
     // Generate batch name with format: BATCH_{user display name}_{date time}
-    const currentDate = new Date().toLocaleString('en-GB', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
-    }).replace(/[/,]/g, '-').replace(/\s/g, ' ');
-    const uploaderName = userDisplayName || uploadedBy || userId;
-    const batchName = `BATCH_${uploaderName}_${currentDate}`;
+    const currentDate = new Date()
+      .toLocaleString('en-GB', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      })
+      .replace(/[/,]/g, '-')
+      .replace(/\s/g, ' ')
+    const uploaderName = userDisplayName || uploadedBy || userId
+    const batchName = `BATCH_${uploaderName}_${currentDate}`
 
-    let importedCount = 0;
-    let failedCount = 0;
-    const failedRows: any[] = [];
-    let totalValue = 0;
-    let batchId: number | undefined;
+    let importedCount = 0
+    let failedCount = 0
+    const failedRows: any[] = []
+    let totalValue = 0
+    let batchId: number | undefined
 
     // Start transaction
-    await executeQuery("BEGIN TRANSACTION");
+    await executeQuery('BEGIN TRANSACTION')
 
     try {
       // Create batch record first
@@ -101,11 +104,11 @@ export async function POST(request: NextRequest) {
         INSERT INTO MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES (
           BATCH_NAME, UPLOADED_BY, TOTAL_ROWS, IS_ACTIVE, CREATED_DATE
         ) VALUES (?, ?, ?, TRUE, CURRENT_TIMESTAMP())
-      `;
+      `
 
-            const batchParams = [requestBatchName || batchName, userId, data.length];
+      const batchParams = [requestBatchName || batchName, userId, data.length]
       // debugSQL(batchSQL, batchParams, "Bulk Import Batch Creation");
-      await executeQuery(batchSQL, batchParams);
+      await executeQuery(batchSQL, batchParams)
 
       // Get the generated batch ID
       const batchIdResult = await executeQuery(
@@ -116,17 +119,17 @@ export async function POST(request: NextRequest) {
         ORDER BY CREATED_DATE DESC 
         LIMIT 1
       `,
-          [requestBatchName || batchName, userId]
-      );
+        [requestBatchName || batchName, userId]
+      )
 
-      batchId = (batchIdResult as any[])[0]?.BATCH_ID;
+      batchId = (batchIdResult as any[])[0]?.BATCH_ID
 
       // NOTE: This implementation assumes all rows are pre-validated on frontend
       // Alternative approach: Attempt import of all rows and handle failures individually
       // This would allow partial imports where some rows succeed and others fail
 
       switch (tab) {
-        case "pending":
+        case 'pending':
           // Import gift requests with batch tracking
           for (const row of data) {
             try {
@@ -137,18 +140,18 @@ export async function POST(request: NextRequest) {
                   COST_MYR, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
                   LAST_MODIFIED_DATE
                 ) VALUES (?, ?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
-              `;
+              `
 
               // Use the validated data structure from frontend validation
-              const costMyr = parseFloat(row.value) || 0;
-              const costVnd = null; // costVnd is not used for bulk import
-              if (costMyr) totalValue += costMyr;
+              const costMyr = parseFloat(row.value) || 0
+              const costVnd = null // costVnd is not used for bulk import
+              if (costMyr) totalValue += costMyr
 
               const insertParams = [
                 parseInt(row.vipId), // vipId from memberLogin validation
-                batchId, 
+                batchId,
                 userId, // Use userId instead of uploadedBy
-                "KAM_Request", 
+                'KAM_Request',
                 row.memberLogin, // Use memberLogin from validation
                 row.memberName, // Use memberName from validation
                 null, // phone - will be populated when VIP is linked
@@ -159,17 +162,17 @@ export async function POST(request: NextRequest) {
                 costVnd,
                 row.remark || null,
                 row.rewardClubOrder || null,
-                row.category
-              ];
+                row.category,
+              ]
 
               // debugSQL(insertSQL, insertParams, `Bulk Import Pending Row ${row._rowNumber || 'unknown'}`);
-              await executeQuery(insertSQL, insertParams);
+              await executeQuery(insertSQL, insertParams)
 
-              importedCount++;
+              importedCount++
             } catch (error) {
-              failedCount++;
-              const errorMessage = error instanceof Error ? error.message : "Unknown error";
-              failedRows.push({ row, error: errorMessage });
+              failedCount++
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+              failedRows.push({ row, error: errorMessage })
             }
           }
 
@@ -181,21 +184,21 @@ export async function POST(request: NextRequest) {
               WHERE KAM_REQUESTED_BY = ? 
                 AND WORKFLOW_STATUS = 'KAM_Request'
                 AND DATE(CREATED_DATE) = CURRENT_DATE()
-            `;
-            const updateWorkflowParams = ["Manager_Review", userId];
+            `
+            const updateWorkflowParams = ['Manager_Review', userId]
             // debugSQL(updateWorkflowSQL, updateWorkflowParams, "Bulk Import Workflow Status Update");
-            const updateResult = await executeQuery(updateWorkflowSQL, updateWorkflowParams);
+            const updateResult = await executeQuery(updateWorkflowSQL, updateWorkflowParams)
 
-            const rowsUpdated = Array.isArray(updateResult) && updateResult[0] ? updateResult[0]['number of rows updated'] : 0;
+            const rowsUpdated = Array.isArray(updateResult) && updateResult[0] ? updateResult[0]['number of rows updated'] : 0
             if (rowsUpdated === 0) {
-              console.warn("⚠️ Warning: Bulk import completed but workflow status update failed - no KAM_Request records found for today");
+              console.warn('⚠️ Warning: Bulk import completed but workflow status update failed - no KAM_Request records found for today')
             } else {
-              console.log(`✅ Successfully updated ${rowsUpdated} gift request(s) to Manager_Review status from bulk import`);
+              console.log(`✅ Successfully updated ${rowsUpdated} gift request(s) to Manager_Review status from bulk import`)
             }
           }
-          break;
+          break
 
-        case "processing":
+        case 'processing':
           // Update existing gifts with MKTOps data and batch tracking
           for (const row of data) {
             try {
@@ -209,25 +212,25 @@ export async function POST(request: NextRequest) {
                   BATCH_ID = ?,
                   LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
                 WHERE GIFT_ID = ?
-              `;
+              `
 
-              const result = await executeQuery(updateSQL, [row.dispatcher, row.trackingCode, row.trackingStatus, batchId, row.giftId]);
+              const result = await executeQuery(updateSQL, [row.dispatcher, row.trackingCode, row.trackingStatus, batchId, row.giftId])
 
               if ((result as any).affectedRows > 0) {
-                importedCount++;
+                importedCount++
               } else {
-                failedCount++;
-                failedRows.push({ row, error: "Gift ID not found" });
+                failedCount++
+                failedRows.push({ row, error: 'Gift ID not found' })
               }
             } catch (error) {
-              failedCount++;
-              const errorMessage = error instanceof Error ? error.message : "Unknown error";
-              failedRows.push({ row, error: errorMessage });
+              failedCount++
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+              failedRows.push({ row, error: errorMessage })
             }
           }
-          break;
+          break
 
-        case "kam-proof":
+        case 'kam-proof':
           // Update gifts with KAM proof data and batch tracking
           for (const row of data) {
             try {
@@ -241,25 +244,25 @@ export async function POST(request: NextRequest) {
                   BATCH_ID = ?,
                   LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
                 WHERE GIFT_ID = ?
-              `;
+              `
 
-              const result = await executeQuery(updateSQL, [row.kamProof, row.giftFeedback, userId, batchId, row.giftId]);
+              const result = await executeQuery(updateSQL, [row.kamProof, row.giftFeedback, userId, batchId, row.giftId])
 
               if ((result as any).affectedRows > 0) {
-                importedCount++;
+                importedCount++
               } else {
-                failedCount++;
-                failedRows.push({ row, error: "Gift ID not found" });
+                failedCount++
+                failedRows.push({ row, error: 'Gift ID not found' })
               }
             } catch (error) {
-              failedCount++;
-              const errorMessage = error instanceof Error ? error.message : "Unknown error";
-              failedRows.push({ row, error: errorMessage });
+              failedCount++
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+              failedRows.push({ row, error: errorMessage })
             }
           }
-          break;
+          break
 
-        case "audit":
+        case 'audit':
           // Update gifts with audit data and batch tracking
           for (const row of data) {
             try {
@@ -273,26 +276,26 @@ export async function POST(request: NextRequest) {
                   BATCH_ID = ?,
                   LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
                 WHERE GIFT_ID = ?
-              `;
+              `
 
-              const result = await executeQuery(updateSQL, [userId, row.auditRemark, batchId, row.giftId]);
+              const result = await executeQuery(updateSQL, [userId, row.auditRemark, batchId, row.giftId])
 
               if ((result as any).affectedRows > 0) {
-                importedCount++;
+                importedCount++
               } else {
-                failedCount++;
-                failedRows.push({ row, error: "Gift ID not found" });
+                failedCount++
+                failedRows.push({ row, error: 'Gift ID not found' })
               }
             } catch (error) {
-              failedCount++;
-              const errorMessage = error instanceof Error ? error.message : "Unknown error";
-              failedRows.push({ row, error: errorMessage });
+              failedCount++
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+              failedRows.push({ row, error: errorMessage })
             }
           }
-          break;
+          break
 
         default:
-          throw new Error(`Unsupported tab: ${tab}`);
+          throw new Error(`Unsupported tab: ${tab}`)
       }
 
       // Update batch record with final status
@@ -302,30 +305,44 @@ export async function POST(request: NextRequest) {
           IS_ACTIVE = TRUE,
           COMPLETED_AT = CURRENT_TIMESTAMP()
         WHERE BATCH_ID = ?
-      `;
+      `
 
-      const updateBatchParams = [batchId];
+      const updateBatchParams = [batchId]
       // debugSQL(updateBatchSQL, updateBatchParams, "Bulk Import Batch Update");
-      await executeQuery(updateBatchSQL, updateBatchParams);
+      await executeQuery(updateBatchSQL, updateBatchParams)
 
       // Note: BULK_IMPORT_LOGS table removed as it doesn't exist in the current schema
       // Batch tracking is handled by BULK_IMPORT_BATCHES table
 
+      // Get the created gift IDs for logging
+      let createdGiftIds: number[] = []
+      if (tab === 'pending' && importedCount > 0) {
+        const getGiftIdsSQL = `
+          SELECT GIFT_ID 
+          FROM MY_FLOW.PUBLIC.GIFT_DETAILS 
+          WHERE BATCH_ID = ?
+          ORDER BY GIFT_ID
+        `
+        const giftIdsResult = await executeQuery(getGiftIdsSQL, [batchId])
+        createdGiftIds = Array.isArray(giftIdsResult) ? giftIdsResult.map((row: any) => row.GIFT_ID) : []
+      }
+
       // Commit transaction
-      await executeQuery("COMMIT");
+      await executeQuery('COMMIT')
 
       return NextResponse.json({
         success: true,
         message: `Successfully imported ${importedCount} records`,
         importedCount,
         failedCount,
-        batchId: batchId?.toString() || "",
+        batchId: batchId?.toString() || '',
         totalValue,
+        createdGiftIds: createdGiftIds, // Return created gift IDs for logging
         failedRows: failedRows.length > 0 ? failedRows : undefined,
-      } as BulkImportResult);
+      } as BulkImportResult)
     } catch (error) {
       // Rollback transaction on error
-      await executeQuery("ROLLBACK");
+      await executeQuery('ROLLBACK')
 
       // Update batch record to failed status
       const updateBatchSQL = `
@@ -333,32 +350,32 @@ export async function POST(request: NextRequest) {
         SET 
           IS_ACTIVE = FALSE,
           COMPLETED_AT = CURRENT_TIMESTAMP()
-        WHERE BATCH_ID = ?
-      `;
+        WHERE BATCH_ID = ? AND
+      `
 
-      const updateBatchParams = [batchId];
+      const updateBatchParams = [batchId]
       // debugSQL(updateBatchSQL, updateBatchParams, "Bulk Import Batch Failed Update");
-      await executeQuery(updateBatchSQL, updateBatchParams);
+      await executeQuery(updateBatchSQL, updateBatchParams)
 
       // Log failed transaction
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      console.error("Bulk import failed:", errorMessage);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error('Bulk import failed:', errorMessage)
 
-      throw error;
+      throw error
     }
   } catch (error) {
-    console.error("Bulk import error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error('Bulk import error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
     return NextResponse.json(
       {
         success: false,
-        message: errorMessage || "Bulk import failed",
+        message: errorMessage || 'Bulk import failed',
         importedCount: 0,
         failedCount: 0,
-        batchId: "unknown",
+        batchId: 'unknown',
       } as BulkImportResult,
       { status: 500 }
-    );
+    )
   }
 }

@@ -1,59 +1,57 @@
-import { NextRequest, NextResponse } from "next/server";
-import { executeQuery } from "@/lib/snowflake/config";
-import { GiftRequestDetails, GiftFilters, WorkflowStatus, GiftCategory } from "@/types/gift";
+import { NextRequest, NextResponse } from 'next/server'
+import { executeQuery } from '@/lib/snowflake/config'
+import { GiftRequestDetails, GiftFilters, WorkflowStatus, GiftCategory } from '@/types/gift'
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
+    const { searchParams } = new URL(request.url)
 
     // Extract query parameters
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "50");
-    const offset = (page - 1) * limit;
+    const page = parseInt(searchParams.get('page') || '1')
 
     // Filter parameters
-    const workflowStatus = searchParams.get("workflowStatus") as WorkflowStatus | null;
-    const category = searchParams.get("category") as GiftCategory | null;
-    const kamRequestedBy = searchParams.get("kamRequestedBy");
-    const memberLogin = searchParams.get("memberLogin");
-    const dateFrom = searchParams.get("dateFrom");
-    const dateTo = searchParams.get("dateTo");
-    const search = searchParams.get("search");
+    const workflowStatus = searchParams.get('workflowStatus') as WorkflowStatus | null
+    const category = searchParams.get('category') as GiftCategory | null
+    const kamRequestedBy = searchParams.get('kamRequestedBy')
+    const memberLogin = searchParams.get('memberLogin')
+    const dateFrom = searchParams.get('dateFrom')
+    const dateTo = searchParams.get('dateTo')
+    const search = searchParams.get('search')
 
     // Build WHERE clause
-    const whereConditions: string[] = ["1=1"]; // Always true condition to start
-    const params: any[] = [];
+    const whereConditions: string[] = ['1=1'] // Always true condition to start
+    const params: any[] = []
 
     // Only apply workflow status filter if there's no search term
     // This allows searching across all workflow statuses
     if (workflowStatus && !search) {
-      whereConditions.push("WORKFLOW_STATUS = ?");
-      params.push(workflowStatus);
+      whereConditions.push('WORKFLOW_STATUS = ?')
+      params.push(workflowStatus)
     }
 
     if (category) {
-      whereConditions.push("CATEGORY = ?");
-      params.push(category);
+      whereConditions.push('CATEGORY = ?')
+      params.push(category)
     }
 
     if (kamRequestedBy) {
-      whereConditions.push("KAM_REQUESTED_BY ILIKE ?");
-      params.push(`%${kamRequestedBy}%`);
+      whereConditions.push('KAM_REQUESTED_BY ILIKE ?')
+      params.push(`%${kamRequestedBy}%`)
     }
 
     if (memberLogin) {
-      whereConditions.push("MEMBER_LOGIN ILIKE ?");
-      params.push(`%${memberLogin}%`);
+      whereConditions.push('MEMBER_LOGIN ILIKE ?')
+      params.push(`%${memberLogin}%`)
     }
 
     if (dateFrom) {
-      whereConditions.push("CREATED_DATE >= ?");
-      params.push(dateFrom);
+      whereConditions.push('CREATED_DATE >= ?')
+      params.push(dateFrom)
     }
 
     if (dateTo) {
-      whereConditions.push("CREATED_DATE <= ?");
-      params.push(dateTo);
+      whereConditions.push('CREATED_DATE <= ?')
+      params.push(dateTo)
     }
 
     if (search) {
@@ -63,25 +61,25 @@ export async function GET(request: NextRequest) {
         GIFT_ITEM ILIKE ? OR 
         REWARD_NAME ILIKE ? OR
         TRACKING_CODE ILIKE ?
-      )`);
-      const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      )`)
+      const searchTerm = `%${search}%`
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm)
     }
 
     // Show gifts from ACTIVE batches or manual gifts (no batch)
-    whereConditions.push("(BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE IS_ACTIVE = TRUE))");
+    whereConditions.push('(BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE IS_ACTIVE = TRUE))')
 
-    const whereClause = whereConditions.join(" AND ");
+    const whereClause = whereConditions.join(' AND ')
 
     // Count total records
     const countSQL = `
       SELECT COUNT(*) as total
       FROM MY_FLOW.PUBLIC.GIFT_DETAILS
       WHERE ${whereClause}
-    `;
+    `
 
-    const countResult = await executeQuery(countSQL, params);
-    const total = (countResult as any[])[0]?.total || 0;
+    const countResult = await executeQuery(countSQL, params)
+    const total = (countResult as any[])[0]?.total || 0
 
     // Fetch paginated data
     const dataSQL = `
@@ -111,7 +109,6 @@ export async function GET(request: NextRequest) {
          MKT_PURCHASE_DATE,
          UPLOADED_BO,
          MKT_PROOF,
-         MKT_PROOF_BY,
          KAM_PROOF,
          KAM_PROOF_BY,
          GIFT_FEEDBACK,
@@ -123,12 +120,9 @@ export async function GET(request: NextRequest) {
       FROM MY_FLOW.PUBLIC.GIFT_DETAILS
       WHERE ${whereClause}
       ORDER BY CREATED_DATE DESC, GIFT_ID DESC
-      LIMIT ? OFFSET ?
-    `;
+    `
 
-    const dataParams = [...params, limit, offset];
-    console.log("Executing query:", dataSQL, dataParams);
-    const result = await executeQuery(dataSQL, dataParams);
+    const result = await executeQuery(dataSQL, params)
 
     // Transform the data to match our TypeScript interface
     const gifts: GiftRequestDetails[] = (result as any[]).map((row: any) => ({
@@ -157,7 +151,6 @@ export async function GET(request: NextRequest) {
       mktPurchaseDate: row.MKT_PURCHASE_DATE ? new Date(row.MKT_PURCHASE_DATE) : null,
       uploadedBo: row.UPLOADED_BO,
       mktProof: row.MKT_PROOF,
-      mktProofBy: row.MKT_PROOF_BY,
       kamProof: row.KAM_PROOF,
       kamProofBy: row.KAM_PROOF_BY,
       giftFeedback: row.GIFT_FEEDBACK,
@@ -166,27 +159,26 @@ export async function GET(request: NextRequest) {
       auditRemark: row.AUDIT_REMARK,
       rejectReason: row.REJECT_REASON,
       lastModifiedDate: row.LAST_MODIFIED_DATE ? new Date(row.LAST_MODIFIED_DATE) : null,
-    }));
+    }))
 
     return NextResponse.json({
       success: true,
       data: gifts,
       pagination: {
         page,
-        limit,
         total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / 50),
       },
-    });
+    })
   } catch (error) {
-    console.error("Error fetching gifts:", error);
+    console.error('Error fetching gifts:', error)
     return NextResponse.json(
       {
         success: false,
-        message: "Failed to fetch gifts",
-        error: error instanceof Error ? error.message : "Unknown error",
+        message: 'Failed to fetch gifts',
+        error: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
-    );
+    )
   }
 }

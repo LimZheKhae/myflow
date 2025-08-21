@@ -1,33 +1,33 @@
-import { NextRequest, NextResponse } from "next/server";
-import { executeQuery } from "@/lib/snowflake/config";
-import { GiftStatistics, WorkflowStatus, GiftCategory } from "@/types/gift";
+import { NextRequest, NextResponse } from 'next/server'
+import { executeQuery } from '@/lib/snowflake/config'
+import { GiftStatistics, WorkflowStatus, GiftCategory } from '@/types/gift'
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
+    const { searchParams } = new URL(request.url)
 
     // Extract date range parameters
-    const dateFrom = searchParams.get("dateFrom");
-    const dateTo = searchParams.get("dateTo");
+    const dateFrom = searchParams.get('dateFrom')
+    const dateTo = searchParams.get('dateTo')
 
     // Build WHERE clause for date filtering
-    const whereConditions: string[] = ["1=1"];
-    const params: any[] = [];
+    const whereConditions: string[] = ['1=1']
+    const params: any[] = []
 
     if (dateFrom) {
-      whereConditions.push("CREATED_DATE >= ?");
-      params.push(dateFrom);
+      whereConditions.push('CREATED_DATE >= ?')
+      params.push(dateFrom)
     }
 
     if (dateTo) {
-      whereConditions.push("CREATED_DATE <= ?");
-      params.push(dateTo);
+      whereConditions.push('CREATED_DATE <= ?')
+      params.push(dateTo)
     }
 
     // Include gifts from ACTIVE batches or manual gifts (no batch)
-          whereConditions.push("(BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE IS_ACTIVE != FALSE))");
+    whereConditions.push('(BATCH_ID IS NULL OR BATCH_ID IN (SELECT BATCH_ID FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE IS_ACTIVE = TRUE))')
 
-    const whereClause = whereConditions.join(" AND ");
+    const whereClause = whereConditions.join(' AND ')
 
     // Get total counts and values
     const totalsSQL = `
@@ -39,10 +39,10 @@ export async function GET(request: NextRequest) {
         AVG(COST_VND) as averageCostVnd
       FROM MY_FLOW.PUBLIC.GIFT_DETAILS
       WHERE ${whereClause}
-    `;
+    `
 
-    const totalsResult = await executeQuery(totalsSQL, params);
-    const totals = (totalsResult as any[])[0];
+    const totalsResult = await executeQuery(totalsSQL, params)
+    const totals = (totalsResult as any[])[0]
 
     // Get status breakdown
     const statusSQL = `
@@ -52,10 +52,10 @@ export async function GET(request: NextRequest) {
       FROM MY_FLOW.PUBLIC.GIFT_DETAILS
       WHERE ${whereClause}
       GROUP BY WORKFLOW_STATUS
-    `;
+    `
 
-    const statusResult = await executeQuery(statusSQL, params);
-    const statusRows = statusResult as any[];
+    const statusResult = await executeQuery(statusSQL, params)
+    const statusRows = statusResult as any[]
 
     const statusBreakdown: Record<WorkflowStatus, number> = {
       KAM_Request: 0,
@@ -65,13 +65,13 @@ export async function GET(request: NextRequest) {
       SalesOps_Audit: 0,
       Completed: 0,
       Rejected: 0,
-    };
+    }
 
     statusRows.forEach((row) => {
       if (row.WORKFLOW_STATUS in statusBreakdown) {
-        statusBreakdown[row.WORKFLOW_STATUS as WorkflowStatus] = row.count;
+        statusBreakdown[row.WORKFLOW_STATUS as WorkflowStatus] = row.count
       }
-    });
+    })
 
     // Get category breakdown
     const categorySQL = `
@@ -81,24 +81,24 @@ export async function GET(request: NextRequest) {
       FROM MY_FLOW.PUBLIC.GIFT_DETAILS
       WHERE ${whereClause}
       GROUP BY CATEGORY
-    `;
+    `
 
-    const categoryResult = await executeQuery(categorySQL, params);
-    const categoryRows = categoryResult as any[];
+    const categoryResult = await executeQuery(categorySQL, params)
+    const categoryRows = categoryResult as any[]
 
     const categoryBreakdown: Record<GiftCategory, number> = {
       Birthday: 0,
       Retention: 0,
-      "High Roller": 0,
+      'High Roller': 0,
       Promotion: 0,
       Other: 0,
-    };
+    }
 
     categoryRows.forEach((row) => {
       if (row.CATEGORY in categoryBreakdown) {
-        categoryBreakdown[row.CATEGORY as GiftCategory] = row.count;
+        categoryBreakdown[row.CATEGORY as GiftCategory] = row.count
       }
-    });
+    })
 
     // Get recent activity (last 7 days)
     const recentActivitySQL = `
@@ -107,10 +107,10 @@ export async function GET(request: NextRequest) {
       FROM MY_FLOW.PUBLIC.GIFT_DETAILS
       WHERE ${whereClause}
         AND CREATED_DATE >= DATEADD(day, -7, CURRENT_DATE())
-    `;
+    `
 
-    const recentResult = await executeQuery(recentActivitySQL, params);
-    const recentCount = (recentResult as any[])[0]?.recentCount || 0;
+    const recentResult = await executeQuery(recentActivitySQL, params)
+    const recentCount = (recentResult as any[])[0]?.recentCount || 0
 
     // Get top KAM requesters
     const topKAMSQL = `
@@ -124,10 +124,10 @@ export async function GET(request: NextRequest) {
       GROUP BY KAM_REQUESTED_BY
       ORDER BY requestCount DESC
       LIMIT 5
-    `;
+    `
 
-    const topKAMResult = await executeQuery(topKAMSQL, params);
-    const topKAM = topKAMResult as any[];
+    const topKAMResult = await executeQuery(topKAMSQL, params)
+    const topKAM = topKAMResult as any[]
 
     // Get monthly trends (last 6 months)
     const monthlyTrendSQL = `
@@ -140,24 +140,24 @@ export async function GET(request: NextRequest) {
         AND CREATED_DATE >= DATEADD(month, -6, CURRENT_DATE())
       GROUP BY DATE_TRUNC('month', CREATED_DATE)
       ORDER BY month DESC
-    `;
+    `
 
-    const monthlyTrendResult = await executeQuery(monthlyTrendSQL, params);
-    const monthlyTrends = monthlyTrendResult as any[];
+    const monthlyTrendResult = await executeQuery(monthlyTrendSQL, params)
+    const monthlyTrends = monthlyTrendResult as any[]
 
     const statistics: GiftStatistics = {
       totalGifts: totals.totalGifts || 0,
       totalValueMyr: totals.totalValueMyr || 0,
       totalValueVnd: totals.totalValueVnd || 0,
-      pendingCount: statusBreakdown["Manager_Review"] || 0,
-      processingCount: statusBreakdown["MKTOps_Processing"] || 0,
-      completedCount: statusBreakdown["Completed"] || 0,
-      rejectedCount: statusBreakdown["Rejected"] || 0,
+      pendingCount: statusBreakdown['Manager_Review'] || 0,
+      processingCount: statusBreakdown['MKTOps_Processing'] || 0,
+      completedCount: statusBreakdown['Completed'] || 0,
+      rejectedCount: statusBreakdown['Rejected'] || 0,
       averageCostMyr: totals.averageCostMyr || 0,
       averageCostVnd: totals.averageCostVnd || 0,
       categoryBreakdown,
       statusBreakdown,
-    };
+    }
 
     return NextResponse.json({
       success: true,
@@ -177,16 +177,16 @@ export async function GET(request: NextRequest) {
           totalValue: trend.totalValue,
         })),
       },
-    });
+    })
   } catch (error) {
-    console.error("Error fetching gift statistics:", error);
+    console.error('Error fetching gift statistics:', error)
     return NextResponse.json(
       {
         success: false,
-        message: "Failed to fetch gift statistics",
-        error: error instanceof Error ? error.message : "Unknown error",
+        message: 'Failed to fetch gift statistics',
+        error: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
-    );
+    )
   }
 }

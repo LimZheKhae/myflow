@@ -8,6 +8,7 @@ import Header from "@/components/layout/header";
 import PermissionGuard from "@/components/common/permission-guard";
 import RoleBasedActionPermission, { KAMOnlyAction, KAMAndAdminAction, AuditAndAboveAction, ManagerAndAboveAction, ManagerAndAboveActionWithPermission, KAMAndAdminActionWithPermission, AuditAndAboveActionWithPermission } from "@/components/common/role-based-action-permission";
 import { BulkUploadDialog } from "@/components/ui/bulk-upload-dialog";
+import { BulkUpdateDialog } from "@/components/ui/bulk-update-dialog";
 import AccessDenied from "@/components/common/access-denied";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Plus, Eye, Upload, CheckCircle, XCircle, Clock, Search, FileText, Truck, Shield, Calendar, User, Package, CheckSquare, Download, ArrowRight, ClipboardCheck } from "lucide-react";
+import { Plus, Eye, Upload, CheckCircle, XCircle, Clock, Search, FileText, Truck, Shield, Calendar, User, Package, CheckSquare, Download, ArrowRight, ClipboardCheck, Edit } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -39,6 +40,82 @@ const convertDatesInGifts = (gifts: any[]): GiftRequestDetails[] => {
     auditDate: gift.auditDate ? new Date(gift.auditDate) : null,
     lastModifiedDate: gift.lastModifiedDate ? new Date(gift.lastModifiedDate) : null,
   }));
+};
+
+// Global activity logging function - uses server-side API to avoid ad blocker issues
+const logActivity = async (
+  action: string, 
+  userId: string, 
+  userName: string,
+  userEmail: string, 
+  details: Record<string, any>
+) => {
+  try {
+    // Log to global activity logs
+    await fetch('/api/activity-logs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        module: 'GIFT_APPROVAL',
+        action: action.toUpperCase().replace(/[-\s]/g, '_'), // Convert to uppercase with underscores
+        userId: userId,
+        userName: userName,
+        userEmail: userEmail,
+        details: details
+      })
+    });
+
+    // Also log to gift timeline if it's a status change
+    if (details.giftId && details.toStatus && details.fromStatus !== details.toStatus) {
+      try {
+        // Log the main status change
+        await fetch('/api/gift-approval/log-timeline', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            giftId: details.giftId,
+            fromStatus: details.fromStatus,
+            toStatus: details.toStatus,
+            changedBy: userId,
+            remark: details.remark || null
+          })
+        });
+
+        // Special case: If the toStatus is "KAM_Request" (from gift creation), 
+        // also log the automatic transition from KAM_Request to Manager_Review
+        if (details.toStatus === 'KAM_Request') {
+          try {
+            await fetch('/api/gift-approval/log-timeline', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                giftId: details.giftId,
+                fromStatus: 'KAM_Request',
+                toStatus: 'Manager_Review',
+                changedBy: userId,
+                remark: 'Gift request created and automatically moved to Manager Review'
+              })
+            });
+          } catch (autoTransitionError) {
+            console.error('Error logging automatic transition:', autoTransitionError);
+            // Don't throw error to avoid breaking the main workflow
+          }
+        }
+      } catch (timelineError) {
+        console.error('Error logging timeline event:', timelineError);
+        // Don't throw error to avoid breaking the main workflow
+      }
+    }
+  } catch (error) {
+    console.error('Error logging activity:', error);
+    // Don't throw error to avoid breaking the main workflow
+  }
 };
 
   // API functions
@@ -132,6 +209,17 @@ export default function Gifts() {
   const [isKAMProofModalOpen, setIsKAMProofModalOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
 
+  // Loading states for API actions
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [isApprovingGift, setIsApprovingGift] = useState<number | null>(null);
+  const [isRejectingGift, setIsRejectingGift] = useState<number | null>(null);
+  const [isUpdatingMKTOps, setIsUpdatingMKTOps] = useState<number | null>(null);
+  const [isSubmittingKAMProof, setIsSubmittingKAMProof] = useState<number | null>(null);
+  const [isSubmittingAudit, setIsSubmittingAudit] = useState<number | null>(null);
+  const [isBulkActioning, setIsBulkActioning] = useState(false);
+  const [isTogglingBO, setIsTogglingBO] = useState<number | null>(null);
+  const [isProceedingToNext, setIsProceedingToNext] = useState<number | null>(null);
+
   // Modal form states
   const [rejectingGiftId, setRejectingGiftId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -152,16 +240,6 @@ export default function Gifts() {
   const [auditGiftId, setAuditGiftId] = useState<number | null>(null);
   const [auditRemark, setAuditRemark] = useState("");
   const [auditCheckerName, setAuditCheckerName] = useState("");
-
-  // Form states
-  const [mktopsForm, setMktopsForm] = useState({
-    giftId: 0,
-    dispatcher: "",
-    trackingCode: "",
-    status: "In Transit" as "In Transit" | "Delivered" | "Failed",
-    uploadedBO: false,
-    mktOpsProof: null as File | null,
-  });
 
   const [auditForm, setAuditForm] = useState({
     checkerName: "",
@@ -385,6 +463,7 @@ export default function Gifts() {
       return;
     }
 
+    setIsSubmittingRequest(true);
     try {
       const response = await fetch("/api/gift-approval/create", {
         method: "POST",
@@ -417,6 +496,29 @@ export default function Gifts() {
       toast.success("Gift request submitted successfully!", {
         description: `Gift request has been created and moved to Manager Review.`,
       });
+      
+      console.log("Checking data", data)
+      // Log activity using the returned gift ID
+      if (data.data?.giftId) {
+        await logActivity(
+          'CREATE_REQUEST',
+          user?.id || 'unknown',
+          user?.name || user?.email || 'unknown',
+          user?.email || 'unknown',
+          {
+            giftId: data.data.giftId,
+            fromStatus: '',
+            toStatus: 'KAM_Request',
+            giftItem: requestForm.giftItem,
+            memberName: requestForm.memberName,
+            memberLogin: requestForm.memberLogin,
+            costMyr: parseFloat(requestForm.value),
+            category: requestForm.category,
+            remark: `Gift request created: ${requestForm.giftItem} for ${requestForm.memberName}`
+          }
+        );
+
+      }
 
       // Reset form
       setRequestForm({
@@ -433,10 +535,13 @@ export default function Gifts() {
 
       // Close modal
       setIsRequestModalOpen(false);
+      
       await refreshGiftsData();
     } catch (error) {
       console.error("Error creating gift request:", error);
       toast.error("Failed to create gift request");
+    } finally {
+      setIsSubmittingRequest(false);
     }
   };
 
@@ -463,8 +568,9 @@ export default function Gifts() {
       })
       .filter(Boolean) as number[];
 
+    setIsBulkActioning(true);
     try {
-      await performBulkAction(
+      const data = await performBulkAction(
         "approve",
         selectedGiftIds,
         {
@@ -474,10 +580,48 @@ export default function Gifts() {
       );
 
       toast.success(`Approved ${selectedGiftIds.length} gifts`);
+      
+      // Log bulk activity using returned data if available
+      const updatedGifts = data?.data?.updatedGifts || [];
+      if (updatedGifts.length > 0) {
+        for (const gift of updatedGifts) {
+          await logActivity(
+            'BULK_APPROVE',
+            user?.id || 'unknown',
+            user?.name || user?.email || 'unknown',
+            user?.email || 'unknown',
+            {
+              giftId: gift.giftId,
+              fromStatus: 'Manager_Review',
+              toStatus: 'MKTOps_Processing',
+              remark: 'Bulk approved by manager'
+            }
+          );
+        }
+      } else {
+        // Fallback to original gift IDs if no updated gifts returned
+        for (const giftId of selectedGiftIds) {
+          await logActivity(
+            'BULK_APPROVE',
+            user?.id || 'unknown',
+            user?.name || user?.email || 'unknown',
+            user?.email || 'unknown',
+            {
+              giftId: giftId,
+              fromStatus: 'Manager_Review',
+              toStatus: 'MKTOps_Processing',
+              remark: 'Bulk approved by manager'
+            }
+          );
+        }
+      }
+      
       setRowSelection({});
       await refreshGiftsData();
     } catch (error) {
       toast.error("Failed to approve gifts");
+    } finally {
+      setIsBulkActioning(false);
     }
   };
 
@@ -500,8 +644,9 @@ export default function Gifts() {
       })
       .filter(Boolean) as number[];
 
+    setIsBulkActioning(true);
     try {
-      await performBulkAction(
+      const data = await performBulkAction(
         "reject",
         selectedGiftIds,
         {
@@ -512,10 +657,48 @@ export default function Gifts() {
       );
 
       toast.success(`Rejected ${selectedGiftIds.length} gifts`);
+      
+      // Log bulk activity using returned data if available
+      const updatedGifts = data?.data?.updatedGifts || [];
+      if (updatedGifts.length > 0) {
+        for (const gift of updatedGifts) {
+          await logActivity(
+            'BULK_REJECT',
+            user?.id || 'unknown',
+            user?.name || user?.email || 'unknown',
+            user?.email || 'unknown',
+            {
+              giftId: gift.giftId,
+              fromStatus: 'Manager_Review',
+              toStatus: 'Rejected',
+              remark: 'Bulk rejection - does not meet criteria'
+            }
+          );
+        }
+      } else {
+        // Fallback to original gift IDs if no updated gifts returned
+        for (const giftId of selectedGiftIds) {
+          await logActivity(
+            'BULK_REJECT',
+            user?.id || 'unknown',
+            user?.name || user?.email || 'unknown',
+            user?.email || 'unknown',
+            {
+              giftId: giftId,
+              fromStatus: 'Manager_Review',
+              toStatus: 'Rejected',
+              remark: 'Bulk rejection - does not meet criteria'
+            }
+          );
+        }
+      }
+      
       setRowSelection({});
       await refreshGiftsData();
     } catch (error) {
       toast.error("Failed to reject gifts");
+    } finally {
+      setIsBulkActioning(false);
     }
   };
 
@@ -526,6 +709,7 @@ export default function Gifts() {
       return;
     }
 
+    setIsApprovingGift(giftId);
     try {
       const response = await fetch("/api/gift-approval/update", {
         method: "PUT",
@@ -550,9 +734,26 @@ export default function Gifts() {
       }
 
       toast.success("Gift approved successfully");
+      
+      // Log activity
+      await logActivity(
+        'APPROVE',
+        user?.id || 'unknown',
+        user?.name || user?.email || 'unknown',
+        user?.email || 'unknown',
+        {
+          giftId: giftId,
+          fromStatus: 'Manager_Review',
+          toStatus: 'MKTOps_Processing',
+          remark: 'Gift approved by manager'
+        }
+      );
+      
       await refreshGiftsData();
     } catch (error) {
       toast.error("Failed to approve gift");
+    } finally {
+      setIsApprovingGift(null);
     }
   };
 
@@ -562,6 +763,7 @@ export default function Gifts() {
       return;
     }
 
+    setIsRejectingGift(giftId);
     try {
       const response = await fetch("/api/gift-approval/update", {
         method: "PUT",
@@ -587,12 +789,29 @@ export default function Gifts() {
       }
 
       toast.success("Gift rejected successfully");
+      
+      // Log activity
+      await logActivity(
+        'REJECT',
+        user?.id || 'unknown',
+        user?.name || user?.email || 'unknown',
+        user?.email || 'unknown',
+        {
+          giftId: giftId,
+          fromStatus: 'Manager_Review',
+          toStatus: 'Rejected',
+          remark: `Gift rejected: ${reason}`
+        }
+      );
+      
       setRejectReason("");
       setIsRejectModalOpen(false);
       setRejectingGiftId(null);
       await refreshGiftsData();
     } catch (error) {
       toast.error("Failed to reject gift");
+    } finally {
+      setIsRejectingGift(null);
     }
   };
 
@@ -602,6 +821,7 @@ export default function Gifts() {
       return;
     }
 
+    setIsUpdatingMKTOps(giftId);
     try {
       // If there's an image file, upload it using the API endpoint
       let mktProofUrl = null;
@@ -661,11 +881,29 @@ export default function Gifts() {
       }
 
       toast.success("MKTOps information updated successfully");
+      
+      // Log activity
+      await logActivity(
+        'UPDATE_MKTOPS',
+        user?.id || 'unknown',
+        user?.name || user?.email || 'unknown',
+        user?.email || 'unknown',
+        {
+          giftId: giftId,
+          dispatcher: dispatcher,
+          trackingCode: trackingCode,
+          trackingStatus: trackingStatus,
+          remark: `MKTOps info updated: ${dispatcher}, ${trackingCode}, ${trackingStatus}`
+        }
+      );
+      
       setIsMKTOpsModalOpen(false);
       await refreshGiftsData();
     } catch (error) {
       console.error("Error updating MKTOps information:", error);
       toast.error("Failed to update MKTOps information");
+    } finally {
+      setIsUpdatingMKTOps(null);
     }
   };
 
@@ -675,6 +913,7 @@ export default function Gifts() {
       return;
     }
 
+    setIsSubmittingKAMProof(giftId);
     try {
       // If there's an image file, upload it using the API endpoint
       let kamProofUrl = null;
@@ -739,11 +978,29 @@ export default function Gifts() {
         : "KAM proof submitted successfully";
       
       toast.success(successMessage);
+      
+      // Log activity
+      await logActivity(
+        'SUBMIT_KAM_PROOF',
+        user?.id || 'unknown',
+        user?.name || user?.email || 'unknown',
+        user?.email || 'unknown',
+        {
+          giftId: giftId,
+          fromStatus: 'KAM_Proof',
+          toStatus: 'SalesOps_Audit',
+          giftFeedback: giftFeedback,
+          remark: `KAM proof submitted${giftFeedback ? ': ' + giftFeedback : ''}`
+        }
+      );
+      
       setIsKAMProofModalOpen(false);
       await refreshGiftsData();
     } catch (error) {
       console.error("Error submitting KAM proof:", error);
       toast.error("Failed to submit KAM proof");
+    } finally {
+      setIsSubmittingKAMProof(null);
     }
   };
 
@@ -793,6 +1050,7 @@ export default function Gifts() {
       return;
     }
 
+    setIsTogglingBO(giftId);
     try {
       const response = await fetch("/api/gift-approval/update", {
         method: "PUT",
@@ -819,6 +1077,8 @@ export default function Gifts() {
       await refreshGiftsData();
     } catch (error) {
       toast.error("Failed to toggle BO status");
+    } finally {
+      setIsTogglingBO(null);
     }
   };
 
@@ -828,6 +1088,7 @@ export default function Gifts() {
       return;
     }
 
+    setIsProceedingToNext(giftId);
     try {
       const response = await fetch("/api/gift-approval/update", {
         method: "PUT",
@@ -852,9 +1113,26 @@ export default function Gifts() {
       }
 
       toast.success("Gift moved to KAM Proof step successfully");
+      
+      // Log activity
+      await logActivity(
+        'PROCEED_TO_KAM_PROOF',
+        user?.id || 'unknown',
+        user?.name || user?.email || 'unknown',
+        user?.email || 'unknown',
+        {
+          giftId: giftId,
+          fromStatus: 'MKTOps_Processing',
+          toStatus: 'KAM_Proof',
+          remark: 'Gift moved to KAM Proof stage'
+        }
+      );
+      
       await refreshGiftsData();
     } catch (error) {
       toast.error("Failed to proceed to next step");
+    } finally {
+      setIsProceedingToNext(null);
     }
   };
 
@@ -864,6 +1142,7 @@ export default function Gifts() {
       return;
     }
 
+    setIsSubmittingAudit(giftId);
     try {
       const response = await fetch(`/api/gift-approval/update`, {
         method: "PUT",
@@ -895,6 +1174,23 @@ export default function Gifts() {
         : "Gift marked as issue and returned to KAM Proof";
       
       toast.success(successMessage);
+      
+      // Log activity
+      await logActivity(
+        action === 'complete' ? 'AUDIT_COMPLETE' : 'AUDIT_ISSUE',
+        user?.id || 'unknown',
+        user?.name || user?.email || 'unknown',
+        user?.email || 'unknown',
+        {
+          giftId: giftId,
+          fromStatus: 'SalesOps_Audit',
+          toStatus: action === 'complete' ? 'Completed' : 'KAM_Proof',
+          auditRemark: auditRemark,
+          checkerName: checkerName,
+          remark: `Audit ${action}: ${auditRemark}`
+        }
+      );
+      
       setIsAuditModalOpen(false);
       await refreshGiftsData();
     } catch (error) {
@@ -903,10 +1199,12 @@ export default function Gifts() {
         ? "Failed to mark gift as completed" 
         : "Failed to mark gift as issue";
       toast.error(errorMessage);
+    } finally {
+      setIsSubmittingAudit(null);
     }
   };
 
-  const handleBulkExport = () => {
+  const handleBulkExport = async () => {
     if (!canExportGifts) {
       toast.error("You don't have permission to export gifts");
       return;
@@ -919,8 +1217,48 @@ export default function Gifts() {
     }
 
     const selectedGifts = gifts.filter((_, index) => selectedRows.includes(index.toString()));
-    exportToCSV(selectedGifts, `bulk_gifts_${new Date().toISOString().split("T")[0]}`);
-    toast.success(`Exported ${selectedRows.length} gifts to CSV`);
+    
+    // Format data according to the specification
+    const formattedData = selectedGifts.map(gift => ({
+      'Date': gift.createdDate ? gift.createdDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '',
+      'PIC': gift.kamRequestedBy || '',
+      'Member Login': gift.memberLogin || '',
+      'Full Name': gift.fullName || '',
+      'HP Number': gift.phone || '',
+      'Address': gift.address || '',
+      'Reward Name': gift.rewardName || '',
+      'Gift Cost (MYR)': gift.costMyr ? gift.costMyr.toString() : '',
+      'Cost (VND)': gift.costVnd ? gift.costVnd.toString() : '',
+      'Remark': gift.remark || '',
+      'Reward Club Order': gift.rewardClubOrder || '',
+      'Category': gift.category || '',
+      'Dispatcher': gift.dispatcher || '',
+      'Tracking Code': gift.trackingCode || '',
+      'Status': gift.trackingStatus || '',
+      'Uploaded BO': gift.uploadedBo ? 'Yes' : 'No',
+      'MKTOps Proof': gift.mktProof || '',
+      'KAM Proof': gift.kamProof || '',
+      'Checker Name': gift.auditedBy || '',
+      'Checked Date': gift.auditDate ? gift.auditDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'long' }) : '',
+      'Audit Remark': gift.auditRemark || ''
+    }));
+    
+    exportToCSV(formattedData, `bulk_gifts_${new Date().toISOString().split("T")[0]}`);
+          toast.success(`Exported ${selectedRows.length} gifts to CSV`);
+      
+      // Log export activity
+      await logActivity(
+        'BULK_EXPORT',
+        user?.id || 'unknown',
+        user?.name || user?.email || 'unknown',
+        user?.email || 'unknown',
+        {
+          exportedCount: selectedRows.length,
+          exportType: 'csv',
+          activeTab: activeTab,
+          remark: `Exported ${selectedRows.length} gifts to CSV`
+        }
+      );
   };
 
   // Get filtered gifts based on active tab - now handles client-side filtering
@@ -1328,8 +1666,19 @@ export default function Gifts() {
                     </Button>
                   }
                 >
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-pointer text-green-600 hover:text-green-700" onClick={() => handleApproveGift(gift.giftId)} title="Approve Gift">
-                    <CheckCircle className="h-4 w-4" />
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-8 w-8 p-0 cursor-pointer text-green-600 hover:text-green-700" 
+                    onClick={() => handleApproveGift(gift.giftId)} 
+                    title="Approve Gift"
+                    disabled={isApprovingGift === gift.giftId}
+                  >
+                    {isApprovingGift === gift.giftId ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4" />
+                    )}
                   </Button>
                 </RoleBasedActionPermission>
 
@@ -1353,8 +1702,13 @@ export default function Gifts() {
                       setIsRejectModalOpen(true);
                     }}
                     title="Reject Gift"
+                    disabled={isRejectingGift === gift.giftId}
                   >
-                    <XCircle className="h-4 w-4" />
+                    {isRejectingGift === gift.giftId ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <XCircle className="h-4 w-4" />
+                    )}
                   </Button>
                 </RoleBasedActionPermission>
               </>
@@ -1389,8 +1743,13 @@ export default function Gifts() {
                       setIsMKTOpsModalOpen(true);
                     }}
                     title="Update MKTOps Info"
+                    disabled={isUpdatingMKTOps === gift.giftId}
                   >
-                    <Truck className="h-4 w-4" />
+                    {isUpdatingMKTOps === gift.giftId ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Truck className="h-4 w-4" />
+                    )}
                   </Button>
                 </RoleBasedActionPermission>
 
@@ -1436,8 +1795,13 @@ export default function Gifts() {
                     className={`h-8 w-8 p-0 cursor-pointer ${gift.uploadedBo ? 'text-green-600 hover:text-green-700' : 'text-gray-600 hover:text-gray-700'}`}
                     onClick={() => handleToggleBO(gift.giftId)}
                     title={`Toggle BO Upload Status (Currently: ${gift.uploadedBo ? 'Uploaded' : 'Not Uploaded'})`}
+                    disabled={isTogglingBO === gift.giftId}
                   >
-                    <CheckSquare className="h-4 w-4" />
+                    {isTogglingBO === gift.giftId ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckSquare className="h-4 w-4" />
+                    )}
                   </Button>
                 </RoleBasedActionPermission>
 
@@ -1458,8 +1822,13 @@ export default function Gifts() {
                     className="h-8 w-8 p-0 cursor-pointer text-purple-600 hover:text-purple-700"
                     onClick={() => handleProceedToNext(gift.giftId)}
                     title="Proceed to KAM Proof Step"
+                    disabled={isProceedingToNext === gift.giftId}
                   >
-                    <ArrowRight className="h-4 w-4" />
+                    {isProceedingToNext === gift.giftId ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ArrowRight className="h-4 w-4" />
+                    )}
                   </Button>
                 </RoleBasedActionPermission>
               </>
@@ -1491,8 +1860,13 @@ export default function Gifts() {
                     setIsKAMProofModalOpen(true);
                   }}
                   title="Submit KAM Proof"
+                  disabled={isSubmittingKAMProof === gift.giftId}
                 >
-                  <Upload className="h-4 w-4" />
+                  {isSubmittingKAMProof === gift.giftId ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
                 </Button>
               </RoleBasedActionPermission>
             )}
@@ -1520,8 +1894,13 @@ export default function Gifts() {
                     setIsAuditModalOpen(true);
                   }}
                   title="Audit Gift Request"
+                  disabled={isSubmittingAudit === gift.giftId}
                 >
-                  <ClipboardCheck className="h-4 w-4" />
+                  {isSubmittingAudit === gift.giftId ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ClipboardCheck className="h-4 w-4" />
+                  )}
                 </Button>
               </RoleBasedActionPermission>
             )}
@@ -1754,8 +2133,19 @@ export default function Gifts() {
                         <Button variant="outline" onClick={() => setIsRequestModalOpen(false)}>
                           Cancel
                         </Button>
-                        <Button onClick={handleSubmitRequest} className="bg-green-600 hover:bg-green-700">
-                          Submit Request
+                        <Button 
+                          onClick={handleSubmitRequest} 
+                          className="bg-green-600 hover:bg-green-700"
+                          disabled={isSubmittingRequest}
+                        >
+                          {isSubmittingRequest ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Submitting...
+                            </>
+                          ) : (
+                            "Submit Request"
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -1864,37 +2254,102 @@ export default function Gifts() {
                 </div>
 
                 {/* Bulk Upload Button */}
-                <KAMAndAdminActionWithPermission
-                  module="gift-approval"
-                  permission="IMPORT"
-                  disabledFallback={
-                    <Button size="sm" variant="outline" disabled className="opacity-50 cursor-not-allowed" title="KAM role and IMPORT permission required">
-                      <Upload className="h-4 w-4 mr-2" />
-                      Bulk Upload
-                    </Button>
-                  }
-                >
-                  <BulkUploadDialog
+                {/* Bulk Upload Button - Hide for "All" tab */}
+                {activeTab !== "all" && (
+                  <KAMAndAdminActionWithPermission
                     module="gift-approval"
-                    tab={activeTab}
-                    trigger={
-                      <Button size="sm" variant="outline">
+                    permission="IMPORT"
+                    disabledFallback={
+                      <Button size="sm" variant="outline" disabled className="opacity-50 cursor-not-allowed" title="KAM role and IMPORT permission required">
                         <Upload className="h-4 w-4 mr-2" />
                         Bulk Upload
                       </Button>
                     }
-                    onUploadComplete={(data) => {
-                      console.log("Bulk upload completed:", data);
-                    }}
-                    user={{
-                      id: user?.id || "",
-                      name: user?.name || "",
-                      email: user?.email || "",
-                      role: user?.role || "",
-                      permissions: user?.permissions || {}
-                    }}
-                  />
-                </KAMAndAdminActionWithPermission>
+                  >
+                    <BulkUploadDialog
+                      module="gift-approval"
+                      tab={activeTab}
+                      trigger={
+                        <Button size="sm" variant="outline">
+                          <Upload className="h-4 w-4 mr-2" />
+                          Bulk Upload
+                        </Button>
+                      }
+                      onUploadComplete={async (data) => {
+                        console.log("Bulk upload completed:", data);
+                        
+                        // Log activity for each created gift ID
+                        if (data?.createdGiftIds && Array.isArray(data.createdGiftIds)) {
+                          for (const giftId of data.createdGiftIds) {
+                                    await logActivity(
+            'BULK_IMPORT',
+            user?.id || 'unknown',
+            user?.name || user?.email || 'unknown',
+            user?.email || 'unknown',
+            {
+              giftId: giftId,
+              fromStatus: '',
+              toStatus: 'Manager_Review',
+              remark: `Bulk import: Gift created via CSV upload`
+            }
+          );
+                          }
+                        }
+                        
+                        refreshGiftsData();
+                      }}
+                      user={{
+                        id: user?.id || "",
+                        name: user?.name || "",
+                        email: user?.email || "",
+                        role: user?.role || "",
+                        permissions: user?.permissions || {}
+                      }}
+                    />
+                  </KAMAndAdminActionWithPermission>
+                )}
+
+                {/* Bulk Update Button - Only show for processing, kam-proof, and audit tabs */}
+                {["processing", "kam-proof", "audit"].includes(activeTab) && (
+                  <RoleBasedActionPermission
+                    allowedRoles={
+                      activeTab === "processing" ? ["MKTOPS", "MANAGER", "ADMIN"] :
+                      activeTab === "kam-proof" ? ["KAM", "ADMIN"] :
+                      ["AUDIT", "ADMIN"]
+                    }
+                    permission="EDIT"
+                    module="gift-approval"
+                    alwaysShow={true}
+                    disabledFallback={
+                      <Button size="sm" variant="outline" disabled className="opacity-50 cursor-not-allowed" title="Insufficient permissions for bulk update">
+                        <Edit className="h-4 w-4 mr-2" />
+                        Bulk Update
+                      </Button>
+                    }
+                  >
+                    <BulkUpdateDialog
+                      module="gift-approval"
+                      tab={activeTab}
+                      trigger={
+                        <Button size="sm" variant="outline">
+                          <Edit className="h-4 w-4 mr-2" />
+                          Bulk Update
+                        </Button>
+                      }
+                      onUpdateComplete={(data) => {
+                        console.log("Bulk update completed:", data);
+                        refreshGiftsData();
+                      }}
+                      user={{
+                        id: user?.id || "",
+                        name: user?.name || "",
+                        email: user?.email || "",
+                        role: user?.role || "",
+                        permissions: user?.permissions || {}
+                      }}
+                    />
+                  </RoleBasedActionPermission>
+                )}
               </div>
 
               {/* Bulk Actions */}
@@ -1918,8 +2373,18 @@ export default function Gifts() {
                               </Button>
                             }
                           >
-                            <Button size="sm" variant="outline" onClick={handleBulkApprove} className="bg-green-600 text-white hover:bg-green-700">
-                              <CheckCircle className="h-4 w-4 mr-2" />
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={handleBulkApprove} 
+                              className="bg-green-600 text-white hover:bg-green-700"
+                              disabled={isBulkActioning}
+                            >
+                              {isBulkActioning ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                              )}
                               Bulk Approve
                             </Button>
                           </ManagerAndAboveActionWithPermission>
@@ -1934,8 +2399,18 @@ export default function Gifts() {
                               </Button>
                             }
                           >
-                            <Button size="sm" variant="outline" onClick={handleBulkReject} className="bg-red-600 text-white hover:bg-red-700">
-                              <XCircle className="h-4 w-4 mr-2" />
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={handleBulkReject} 
+                              className="bg-red-600 text-white hover:bg-red-700"
+                              disabled={isBulkActioning}
+                            >
+                              {isBulkActioning ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <XCircle className="h-4 w-4 mr-2" />
+                              )}
                               Bulk Reject
                             </Button>
                           </ManagerAndAboveActionWithPermission>
@@ -2094,18 +2569,29 @@ export default function Gifts() {
               <Button variant="outline" onClick={() => setIsRejectModalOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => {
-                if (rejectingGiftId) {
-                  // Check if the gift is in processing tab or pending tab
-                  const gift = gifts.find(g => g.giftId === rejectingGiftId);
-                  if (gift?.workflowStatus === "MKTOps_Processing") {
-                    handleRejectFromProcessing(rejectingGiftId, rejectReason);
-                  } else {
-                    handleRejectGift(rejectingGiftId, rejectReason);
+              <Button 
+                onClick={() => {
+                  if (rejectingGiftId) {
+                    // Check if the gift is in processing tab or pending tab
+                    const gift = gifts.find(g => g.giftId === rejectingGiftId);
+                    if (gift?.workflowStatus === "MKTOps_Processing") {
+                      handleRejectFromProcessing(rejectingGiftId, rejectReason);
+                    } else {
+                      handleRejectGift(rejectingGiftId, rejectReason);
+                    }
                   }
-                }
-              }} disabled={!rejectReason.trim()} className="bg-red-600 hover:bg-red-700">
-                Reject Gift
+                }} 
+                disabled={!rejectReason.trim() || isRejectingGift === rejectingGiftId} 
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {isRejectingGift === rejectingGiftId ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Rejecting...
+                  </>
+                ) : (
+                  "Reject Gift"
+                )}
               </Button>
             </div>
           </div>
@@ -2190,8 +2676,19 @@ export default function Gifts() {
               <Button variant="outline" onClick={() => setIsMKTOpsModalOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => mkTOpsGiftId && handleMKTOpsUpdate(mkTOpsGiftId, mkTOpsForm.dispatcher, mkTOpsForm.trackingCode, mkTOpsForm.trackingStatus, mkTOpsForm.mktOpsProof)} disabled={!mkTOpsForm.dispatcher.trim() || !mkTOpsForm.trackingCode.trim()} className="bg-blue-600 hover:bg-blue-700">
-                Update MKTOps Info
+              <Button 
+                onClick={() => mkTOpsGiftId && handleMKTOpsUpdate(mkTOpsGiftId, mkTOpsForm.dispatcher, mkTOpsForm.trackingCode, mkTOpsForm.trackingStatus, mkTOpsForm.mktOpsProof)} 
+                disabled={!mkTOpsForm.dispatcher.trim() || !mkTOpsForm.trackingCode.trim() || isUpdatingMKTOps === mkTOpsGiftId} 
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {isUpdatingMKTOps === mkTOpsGiftId ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  "Update MKTOps Info"
+                )}
               </Button>
             </div>
           </div>
@@ -2258,8 +2755,19 @@ export default function Gifts() {
               <Button variant="outline" onClick={() => setIsKAMProofModalOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => kamProofGiftId && handleSubmitKAMProof(kamProofGiftId, kamProofForm.kamProof, kamProofForm.giftFeedback)} disabled={!kamProofForm.kamProof && !kamProofForm.existingKamProofUrl} className="bg-orange-600 hover:bg-orange-700">
-                Submit KAM Proof
+              <Button 
+                onClick={() => kamProofGiftId && handleSubmitKAMProof(kamProofGiftId, kamProofForm.kamProof, kamProofForm.giftFeedback)} 
+                disabled={(!kamProofForm.kamProof && !kamProofForm.existingKamProofUrl) || isSubmittingKAMProof === kamProofGiftId} 
+                className="bg-orange-600 hover:bg-orange-700"
+              >
+                {isSubmittingKAMProof === kamProofGiftId ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  "Submit KAM Proof"
+                )}
               </Button>
             </div>
           </div>
@@ -2292,11 +2800,33 @@ export default function Gifts() {
               <Button variant="outline" onClick={() => setIsAuditModalOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => auditGiftId && handleSubmitAudit(auditGiftId, auditRemark, auditCheckerName, "mark-issue")} disabled={!auditRemark.trim()} className="bg-orange-600 hover:bg-orange-700">
-                Mark as Issue
+              <Button 
+                onClick={() => auditGiftId && handleSubmitAudit(auditGiftId, auditRemark, auditCheckerName, "mark-issue")} 
+                disabled={!auditRemark.trim() || isSubmittingAudit === auditGiftId} 
+                className="bg-orange-600 hover:bg-orange-700"
+              >
+                {isSubmittingAudit === auditGiftId ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  "Mark as Issue"
+                )}
               </Button>
-              <Button onClick={() => auditGiftId && handleSubmitAudit(auditGiftId, auditRemark, auditCheckerName, "complete")} disabled={!auditRemark.trim()} className="bg-indigo-600 hover:bg-indigo-700">
-                Mark as Completed
+              <Button 
+                onClick={() => auditGiftId && handleSubmitAudit(auditGiftId, auditRemark, auditCheckerName, "complete")} 
+                disabled={!auditRemark.trim() || isSubmittingAudit === auditGiftId} 
+                className="bg-indigo-600 hover:bg-indigo-700"
+              >
+                {isSubmittingAudit === auditGiftId ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  "Mark as Completed"
+                )}
               </Button>
             </div>
           </div>

@@ -25,6 +25,36 @@ import type { FirebaseUser } from "@/types/firebase"
 import { toast } from "sonner"
 import { format } from "date-fns"
 
+// Global activity logging function - uses server-side API to avoid ad blocker issues
+const logActivity = async (
+  action: string, 
+  userId: string, 
+  userName: string,
+  userEmail: string, 
+  details: Record<string, any>
+) => {
+  try {
+    // Log to global activity logs
+    await fetch('/api/activity-logs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        module: 'USER_MANAGEMENT',
+        action: action.toUpperCase().replace(/[-\s]/g, '_'), // Convert to uppercase with underscores
+        userId: userId,
+        userName: userName,
+        userEmail: userEmail,
+        details: details
+      })
+    });
+  } catch (error) {
+    console.error('Error logging activity:', error);
+    // Don't throw error to avoid breaking the main workflow
+  }
+};
+
 // Available modules for permission settings (only actual application modules)
 const MODULES = [
   { id: 'vip-profile', name: 'VIP Profile' },
@@ -161,18 +191,61 @@ export default function UserManagementPage() {
         return
       }
 
-      await FirebaseAuthService.createUser({
+      const createdUserId = await FirebaseAuthService.createUser({
         ...newUser,
         additionalData: {
           maskPersonalInfo: newUser.maskPersonalInfo,
           canLogin: newUser.canLogin
         }
       })
+      console.log('Created user ID:', createdUserId)
+      // Also create/update user in Snowflake SYS_USER_INFO table
+      try {
+        await fetch('/api/user-management/snowflake', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: createdUserId,
+            name: newUser.name,
+            role: newUser.role.toUpperCase(),
+            isActive: newUser.isActive,
+            email: newUser.email
+          })
+        })
+      } catch (snowflakeError) {
+        console.warn('Failed to sync user to Snowflake SYS_USER_INFO:', snowflakeError)
+        // Don't fail the entire operation if Snowflake sync fails
+      }
 
-      toast.success("User created successfully")
+        toast.success("User created successfully")
       setIsCreateDialogOpen(false)
       resetForm()
       fetchUsers() // Refresh the list
+
+      // Log activity
+      await logActivity(
+        'CREATE_USER',
+        user?.id || 'unknown',
+        user?.name || user?.email || 'unknown',
+        user?.email || 'unknown',
+        {
+          createdUserId: createdUserId!,
+          createdUserName: newUser.name,
+          createdUserEmail: newUser.email,
+          role: newUser.role,
+          department: newUser.department,
+          permissions: newUser.permissions,
+          merchants: newUser.merchants,
+          currencies: newUser.currencies,
+          memberAccess: newUser.memberAccess,
+          canLogin: newUser.canLogin,
+          isActive: newUser.isActive,
+          maskPersonalInfo: newUser.maskPersonalInfo,
+          remark: `User created: ${newUser.name} (${newUser.email}) with role ${newUser.role}`
+        }
+      )
     } catch (error: any) {
       toast.error(error.message || "Failed to create user")
     }
@@ -181,8 +254,45 @@ export default function UserManagementPage() {
   const handleToggleStatus = async (userId: string, currentStatus: boolean) => {
     try {
       await FirebaseAuthService.toggleUserStatus(userId, !currentStatus, user?.id || 'system')
+      // Also update user status in Snowflake SYS_USER_INFO table
+      try {
+        const targetUser = users.find(u => u.id === userId)
+        if (targetUser) {
+          await fetch('/api/user-management/snowflake', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userId: userId,
+              name: targetUser.name,
+              role: targetUser.role,
+              isActive: !currentStatus,
+              email: targetUser.email
+            })
+          })
+        }
+      } catch (snowflakeError) {
+        console.warn('Failed to sync user status to Snowflake SYS_USER_INFO:', snowflakeError)
+        // Don't fail the entire operation if Snowflake sync fails
+      }
+
       toast.success(`User ${currentStatus ? 'deactivated' : 'activated'} successfully`)
       fetchUsers() // Refresh the list
+
+      // Log activity
+      await logActivity(
+        'TOGGLE_USER_STATUS',
+        user?.id || 'unknown',
+        user?.name || user?.email || 'unknown',
+        user?.email || 'unknown',
+        {
+          targetUserId: userId,
+          previousStatus: currentStatus,
+          newStatus: !currentStatus,
+          remark: `User ${currentStatus ? 'deactivated' : 'activated'}`
+        }
+      )
     } catch (error: any) {
       toast.error(error.message || "Failed to update user status")
     }
@@ -194,9 +304,38 @@ export default function UserManagementPage() {
     }
 
     try {
+      // Get user details before deletion for logging
+      const userToDelete = users.find(u => u.id === userId)
+      
+      // Also delete user from Snowflake SYS_USER_INFO table
+      try {
+        await fetch(`/api/user-management/snowflake?userId=${userId}`, {
+          method: 'DELETE',
+        })
+      } catch (snowflakeError) {
+        console.warn('Failed to delete user from Snowflake SYS_USER_INFO:', snowflakeError)
+        // Don't fail the entire operation if Snowflake sync fails
+      }
+
       await FirebaseAuthService.deleteUser(userId, user?.id || 'system')
       toast.success("User deleted successfully")
       fetchUsers() // Refresh the list
+
+      // Log activity
+      await logActivity(
+        'DELETE_USER',
+        user?.id || 'unknown',
+        user?.name || user?.email || 'unknown',
+        user?.email || 'unknown',
+        {
+          deletedUserId: userId,
+          deletedUserName: userToDelete?.name || 'Unknown',
+          deletedUserEmail: userToDelete?.email || 'Unknown',
+          deletedUserRole: userToDelete?.role || 'Unknown',
+          deletedUserDepartment: userToDelete?.department || 'Unknown',
+          remark: `User deleted: ${userToDelete?.name || 'Unknown'} (${userToDelete?.email || 'Unknown'})`
+        }
+      )
     } catch (error: any) {
       toast.error(error.message || "Failed to delete user")
     }
@@ -253,10 +392,63 @@ export default function UserManagementPage() {
         toast.success("User updated successfully")
       }
 
+      // Also update user in Snowflake SYS_USER_INFO table
+      try {
+        await fetch('/api/user-management/snowflake', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: editingUser.id,
+            name: newUser.name,
+            role: newUser.role.toUpperCase(),
+            isActive: newUser.isActive,
+            email: newUser.email
+          })
+        })
+      } catch (snowflakeError) {
+        console.warn('Failed to sync user update to Snowflake SYS_USER_INFO:', snowflakeError)
+        // Don't fail the entire operation if Snowflake sync fails
+      }
+
       setIsCreateDialogOpen(false)
       setEditingUser(null)
       resetForm()
       fetchUsers() // Refresh the list
+
+      // Log activity
+      await logActivity(
+        'UPDATE_USER',
+        user?.id || 'unknown',
+        user?.name || user?.email || 'unknown',
+        user?.email || 'unknown',
+        {
+          updatedUserId: editingUser.id,
+          updatedUserName: editingUser.name,
+          updatedUserEmail: editingUser.email,
+          previousRole: editingUser.role,
+          newRole: newUser.role,
+          previousDepartment: editingUser.department,
+          newDepartment: newUser.department,
+          previousPermissions: editingUser.permissions,
+          newPermissions: newUser.permissions,
+          previousMerchants: editingUser.merchants,
+          newMerchants: newUser.merchants,
+          previousCurrencies: editingUser.currencies,
+          newCurrencies: newUser.currencies,
+          previousMemberAccess: editingUser.memberAccess,
+          newMemberAccess: newUser.memberAccess,
+          previousIsActive: editingUser.isActive,
+          newIsActive: newUser.isActive,
+          previousCanLogin: editingUser.additionalData?.canLogin,
+          newCanLogin: newUser.canLogin,
+          previousMaskPersonalInfo: editingUser.additionalData?.maskPersonalInfo,
+          newMaskPersonalInfo: newUser.maskPersonalInfo,
+          passwordChanged: newUser.password && newUser.password.length >= 6,
+          remark: `User updated: ${editingUser.name} (${editingUser.email})`
+        }
+      )
     } catch (error: any) {
       toast.error(error.message || "Failed to update user")
     }
