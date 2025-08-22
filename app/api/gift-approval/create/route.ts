@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
 import { GiftRequestForm, GiftCategory } from '@/types/gift'
 import { debugSQL } from '@/lib/utils'
+import { logWorkflowTimeline } from '@/lib/workflow-timeline'
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,7 +15,8 @@ export async function POST(request: NextRequest) {
       rewardName,
       rewardClubOrder,
       costMyr,
-      costVnd,
+      costLocal,
+      currency,
       remark,
       category,
       userId,
@@ -23,7 +25,8 @@ export async function POST(request: NextRequest) {
     }: GiftRequestForm & {
       userId: string
       costMyr: number
-      costVnd: number | null
+      costLocal: number | null
+      currency: string
       userRole?: string
       userPermissions?: Record<string, string[]>
     } = body
@@ -104,29 +107,26 @@ export async function POST(request: NextRequest) {
     // Insert gift request
     const insertSQL = `
       INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
-        VIP_ID, BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
-        MEMBER_LOGIN, FULL_NAME, PHONE, ADDRESS, REWARD_NAME, GIFT_ITEM,
-        COST_MYR, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+        BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
+        MEMBER_LOGIN, REWARD_NAME, GIFT_ITEM,
+        COST_BASE, CURRENCY, COST_LOCAL, REMARK, REWARD_CLUB_ORDER, CATEGORY,
         LAST_MODIFIED_DATE
-      ) VALUES (?, ?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
+      ) VALUES (?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
     `
 
     const insertParams = [
-      vipId,
       batchId,
-      userId, // Use user ID from request body
-      'KAM_Request',
-      memberLogin, // Use memberLogin from request
-      memberName, // Use memberName from request
-      null, // phone - will be populated when VIP is linked
-      null, // address - will be populated when VIP is linked
-      rewardName || null,
-      giftItem,
-      costMyr,
-      costVnd,
-      remark || null,
-      rewardClubOrder || null,
-      category,
+      userId, // KAM_REQUESTED_BY - Use user ID from request body
+      'KAM_Request', // WORKFLOW_STATUS
+      memberLogin, // MEMBER_LOGIN
+      rewardName || null, // REWARD_NAME
+      giftItem, // GIFT_ITEM
+      costMyr, // COST_BASE (always in MYR)
+      currency || 'MYR', // CURRENCY (from member profile)
+      costLocal, // COST_LOCAL (local currency amount, can be null)
+      remark || null, // REMARK
+      rewardClubOrder || null, // REWARD_CLUB_ORDER
+      category, // CATEGORY
     ]
 
     // Debug the SQL query and parameters
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
       WHERE KAM_REQUESTED_BY = ? 
         AND MEMBER_LOGIN = ?
         AND GIFT_ITEM = ?
-        AND COST_MYR = ?
+        AND COST_BASE = ?
         AND DATE(CREATED_DATE) = CURRENT_DATE()
       ORDER BY CREATED_DATE DESC 
       LIMIT 1
@@ -204,6 +204,29 @@ export async function POST(request: NextRequest) {
 
     const giftIdResult = await executeQuery(getGiftIdSQL, [userId, memberLogin, giftItem, costMyr])
     const createdGiftId = Array.isArray(giftIdResult) && giftIdResult[0] ? giftIdResult[0].GIFT_ID : null
+
+    // Log workflow timeline for gift creation
+    if (createdGiftId) {
+      // Log initial creation
+      await logWorkflowTimeline({
+        giftId: createdGiftId,
+        fromStatus: null,
+        toStatus: 'KAM_Request',
+        changedBy: userId,
+        remark: `Gift request created: ${giftItem}`,
+      })
+
+      // Log automatic progression to Manager_Review
+      if (rowsUpdated > 0) {
+        await logWorkflowTimeline({
+          giftId: createdGiftId,
+          fromStatus: 'KAM_Request',
+          toStatus: 'Manager_Review',
+          changedBy: userId,
+          remark: 'Automatically moved to Manager Review',
+        })
+      }
+    }
 
     return NextResponse.json({
       success: true,

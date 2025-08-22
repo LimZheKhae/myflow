@@ -207,7 +207,7 @@ export function GiftUpdateActions({ giftId, tab, currentStatus, onUpdateComplete
           return (
             <div className="space-y-4">
               <div>
-                <Label htmlFor="rejectReason">Rejection Reason (Optional)</Label>
+                <Label htmlFor="rejectReason">Rejection Reason <span className="text-red-500">*</span></Label>
                 <Textarea
                   id="rejectReason"
                   placeholder="Enter reason for rejection..."

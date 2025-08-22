@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
 import { debugSQL } from '@/lib/utils'
-import type { BulkImportResult, PendingTabRow, ProcessingTabRow, KamProofTabRow, AuditTabRow, BulkImportBatch } from '@/types/gift'
+import { logBulkWorkflowTimeline } from '@/lib/workflow-timeline'
+import type { BulkImportResult } from '@/types/gift'
 
 interface BulkImportRequest {
   tab: string
@@ -94,6 +95,7 @@ export async function POST(request: NextRequest) {
     const failedRows: any[] = []
     let totalValue = 0
     let batchId: number | undefined
+    let workflowRowsUpdated = 0
 
     // Start transaction
     await executeQuery('BEGIN TRANSACTION')
@@ -135,34 +137,32 @@ export async function POST(request: NextRequest) {
             try {
               const insertSQL = `
                 INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
-                  VIP_ID, BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
-                  MEMBER_LOGIN, FULL_NAME, PHONE, ADDRESS, REWARD_NAME, GIFT_ITEM,
-                  COST_MYR, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+                  BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
+                  MEMBER_LOGIN, REWARD_NAME, GIFT_ITEM,
+                  COST_BASE, CURRENCY, COST_LOCAL, REMARK, REWARD_CLUB_ORDER, CATEGORY,
                   LAST_MODIFIED_DATE
-                ) VALUES (?, ?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
+                ) VALUES (?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
               `
 
               // Use the validated data structure from frontend validation
               const costMyr = parseFloat(row.value) || 0
-              const costVnd = null // costVnd is not used for bulk import
+              const costLocal = row.valueLocal ? parseFloat(row.valueLocal) : null
+              const currency = row.currency || 'MYR'
               if (costMyr) totalValue += costMyr
 
               const insertParams = [
-                parseInt(row.vipId), // vipId from memberLogin validation
                 batchId,
-                userId, // Use userId instead of uploadedBy
-                'KAM_Request',
-                row.memberLogin, // Use memberLogin from validation
-                row.memberName, // Use memberName from validation
-                null, // phone - will be populated when VIP is linked
-                null, // address - will be populated when VIP is linked
-                row.rewardName || null,
-                row.giftItem,
-                costMyr,
-                costVnd,
-                row.remark || null,
-                row.rewardClubOrder || null,
-                row.category,
+                userId, // KAM_REQUESTED_BY - Use user ID from request body
+                'Manager_Review', // All bulk imports start at Manager_Review
+                row.memberLogin.trim(), // MEMBER_LOGIN from CSV
+                row.rewardName?.trim() || null, // REWARD_NAME
+                row.giftItem.trim(), // GIFT_ITEM
+                costMyr, // COST_BASE (always in MYR)
+                currency, // CURRENCY (from member profile or default MYR)
+                costLocal, // COST_LOCAL (local currency amount, can be null)
+                row.remark?.trim() || null, // REMARK
+                row.rewardClubOrder?.trim() || null, // REWARD_CLUB_ORDER
+                row.category.trim(), // CATEGORY
               ]
 
               // debugSQL(insertSQL, insertParams, `Bulk Import Pending Row ${row._rowNumber || 'unknown'}`);
@@ -189,17 +189,18 @@ export async function POST(request: NextRequest) {
             // debugSQL(updateWorkflowSQL, updateWorkflowParams, "Bulk Import Workflow Status Update");
             const updateResult = await executeQuery(updateWorkflowSQL, updateWorkflowParams)
 
-            const rowsUpdated = Array.isArray(updateResult) && updateResult[0] ? updateResult[0]['number of rows updated'] : 0
-            if (rowsUpdated === 0) {
+            workflowRowsUpdated = Array.isArray(updateResult) && updateResult[0] ? updateResult[0]['number of rows updated'] : 0
+            if (workflowRowsUpdated === 0) {
               console.warn('⚠️ Warning: Bulk import completed but workflow status update failed - no KAM_Request records found for today')
             } else {
-              console.log(`✅ Successfully updated ${rowsUpdated} gift request(s) to Manager_Review status from bulk import`)
+              console.log(`✅ Successfully updated ${workflowRowsUpdated} gift request(s) to Manager_Review status from bulk import`)
             }
           }
           break
 
         case 'processing':
           // Update existing gifts with MKTOps data and batch tracking
+          const processingUpdatedGifts: number[] = []
           for (const row of data) {
             try {
               const updateSQL = `
@@ -218,6 +219,7 @@ export async function POST(request: NextRequest) {
 
               if ((result as any).affectedRows > 0) {
                 importedCount++
+                processingUpdatedGifts.push(parseInt(row.giftId))
               } else {
                 failedCount++
                 failedRows.push({ row, error: 'Gift ID not found' })
@@ -228,10 +230,23 @@ export async function POST(request: NextRequest) {
               failedRows.push({ row, error: errorMessage })
             }
           }
+
+          // Log workflow timeline for processing updates
+          if (processingUpdatedGifts.length > 0) {
+            const timelineEntries = processingUpdatedGifts.map((giftId) => ({
+              giftId,
+              fromStatus: 'Manager_Review',
+              toStatus: 'MKTOps_Processing',
+              changedBy: userId,
+              remark: 'Bulk import: Updated with MKTOps data',
+            }))
+            await logBulkWorkflowTimeline(timelineEntries)
+          }
           break
 
         case 'kam-proof':
           // Update gifts with KAM proof data and batch tracking
+          const kamProofUpdatedGifts: number[] = []
           for (const row of data) {
             try {
               const updateSQL = `
@@ -250,6 +265,7 @@ export async function POST(request: NextRequest) {
 
               if ((result as any).affectedRows > 0) {
                 importedCount++
+                kamProofUpdatedGifts.push(parseInt(row.giftId))
               } else {
                 failedCount++
                 failedRows.push({ row, error: 'Gift ID not found' })
@@ -260,10 +276,23 @@ export async function POST(request: NextRequest) {
               failedRows.push({ row, error: errorMessage })
             }
           }
+
+          // Log workflow timeline for KAM proof updates
+          if (kamProofUpdatedGifts.length > 0) {
+            const timelineEntries = kamProofUpdatedGifts.map((giftId) => ({
+              giftId,
+              fromStatus: 'MKTOps_Processing',
+              toStatus: 'KAM_Proof',
+              changedBy: userId,
+              remark: 'Bulk import: Updated with KAM proof data',
+            }))
+            await logBulkWorkflowTimeline(timelineEntries)
+          }
           break
 
         case 'audit':
           // Update gifts with audit data and batch tracking
+          const auditUpdatedGifts: number[] = []
           for (const row of data) {
             try {
               const updateSQL = `
@@ -282,6 +311,7 @@ export async function POST(request: NextRequest) {
 
               if ((result as any).affectedRows > 0) {
                 importedCount++
+                auditUpdatedGifts.push(parseInt(row.giftId))
               } else {
                 failedCount++
                 failedRows.push({ row, error: 'Gift ID not found' })
@@ -291,6 +321,18 @@ export async function POST(request: NextRequest) {
               const errorMessage = error instanceof Error ? error.message : 'Unknown error'
               failedRows.push({ row, error: errorMessage })
             }
+          }
+
+          // Log workflow timeline for audit updates
+          if (auditUpdatedGifts.length > 0) {
+            const timelineEntries = auditUpdatedGifts.map((giftId) => ({
+              giftId,
+              fromStatus: 'KAM_Proof',
+              toStatus: 'SalesOps_Audit',
+              changedBy: userId,
+              remark: 'Bulk import: Updated with audit data',
+            }))
+            await logBulkWorkflowTimeline(timelineEntries)
           }
           break
 
@@ -325,6 +367,38 @@ export async function POST(request: NextRequest) {
         `
         const giftIdsResult = await executeQuery(getGiftIdsSQL, [batchId])
         createdGiftIds = Array.isArray(giftIdsResult) ? giftIdsResult.map((row: any) => row.GIFT_ID) : []
+
+        // Log workflow timeline for bulk created gifts
+        if (createdGiftIds.length > 0) {
+          const timelineEntries = []
+
+          // Log initial creation for each gift
+          for (const giftId of createdGiftIds) {
+            timelineEntries.push({
+              giftId,
+              fromStatus: null,
+              toStatus: 'KAM_Request',
+              changedBy: userId,
+              remark: `Bulk import: Gift request created`,
+            })
+          }
+
+          // Log automatic progression to Manager_Review if update was successful
+          if (workflowRowsUpdated > 0) {
+            for (const giftId of createdGiftIds) {
+              timelineEntries.push({
+                giftId,
+                fromStatus: 'KAM_Request',
+                toStatus: 'Manager_Review',
+                changedBy: userId,
+                remark: 'Bulk import: Automatically moved to Manager Review',
+              })
+            }
+          }
+
+          // Log all timeline entries in bulk
+          await logBulkWorkflowTimeline(timelineEntries)
+        }
       }
 
       // Commit transaction

@@ -12,8 +12,12 @@ export const giftRequestFormSchema = z.object({
   rewardClubOrder: z.string().optional(),
   value: z
     .string()
-    .min(1, 'Value is required')
+    .min(1, 'Value (MYR) is required')
     .refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, 'Value must be a positive number'),
+  valueLocal: z
+    .string()
+    .optional()
+    .refine((val) => !val || (!isNaN(parseFloat(val)) && parseFloat(val) > 0), 'Local value must be a positive number if provided'),
   remark: z.string().optional(),
   category: z
     .string()
@@ -27,10 +31,10 @@ export interface GiftRequestDetails {
   // Primary Key
   giftId: number
 
-  // Basic Information
-  vipId: number | null
-  batchId: number | null
-  kamRequestedBy: string | null
+  // Basic Information (from view)
+  merchantName?: string | null
+  kamRequestedBy: string | null // KAM_NAME from view
+  kamEmail?: string | null
   createdDate: Date | null
   workflowStatus: WorkflowStatus | null
 
@@ -43,31 +47,36 @@ export interface GiftRequestDetails {
   // Gift Information
   rewardName: string | null
   giftItem: string | null
-  costMyr: number | null
-  costVnd: number | null
+  costMyr: number | null // COST_BASE from view
+  costVnd: number | null // COST_LOCAL from view
+  currency?: string | null
   remark: string | null
   rewardClubOrder: string | null
   category: GiftCategory | null
 
-  // Approval Information
-  approvalReviewedBy: number | null
+  // Approval Information (from view)
+  approvalReviewedBy: string | null // MANAGER_NAME from view
+  managerEmail?: string | null
 
-  // MKTOps Information
+  // MKTOps Information (from view)
   dispatcher: string | null
   trackingCode: string | null
   trackingStatus: TrackingStatus | null
-  purchasedBy: number | null
+  purchasedBy: string | null // MKTOPS_NAME from view
+  mktOpsEmail?: string | null
   mktPurchaseDate: Date | null
   uploadedBo: boolean | null
   mktProof: string | null
 
-  // KAM Proof Information
+  // KAM Proof Information (from view)
   kamProof: string | null
-  kamProofBy: number | null
+  kamProofBy: string | null // KAM_PROOF_NAME from view
+  kamProofEmail?: string | null
   giftFeedback: string | null
 
-  // Audit Information
-  auditedBy: number | null
+  // Audit Information (from view)
+  auditedBy: string | null // AUDITER_NAME from view
+  auditorEmail?: string | null
   auditDate: Date | null
   auditRemark: string | null
 
@@ -138,7 +147,8 @@ export interface GiftRequestForm {
   giftItem: string // Required: Gift item description
   rewardName?: string // Optional: Reward name
   rewardClubOrder?: string // Optional: Reward club order
-  value: string // Required: Gift value (will be stored as costMyr)
+  value: string // Required: Gift value in MYR (will be stored as COST_BASE)
+  valueLocal?: string // Optional: Gift value in local currency (will be stored as COST_LOCAL)
   remark?: string // Optional: Additional remarks
   category: GiftCategory | '' // Required: Gift category
 }

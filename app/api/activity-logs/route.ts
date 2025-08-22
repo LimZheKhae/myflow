@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { executeQuery } from '@/lib/snowflake/config'
 import { adminDb } from '@/lib/firebase-admin'
 
 interface ActivityLogRequest {
@@ -43,21 +42,8 @@ export async function POST(request: NextRequest) {
       // Continue execution - don't fail the entire request if Firebase fails
     }
 
-    // Special handling for GIFT_APPROVAL module - also log to Snowflake timeline if it's a status change
-    if (module.toUpperCase() === 'GIFT_APPROVAL' && details.giftId && details.fromStatus && details.toStatus && details.fromStatus !== details.toStatus) {
-      try {
-        const insertSQL = `
-          INSERT INTO MY_FLOW.PUBLIC.GIFT_WORKFLOW_TIMELINE (
-            GIFT_ID, FROM_STATUS, TO_STATUS, CHANGED_BY, CHANGED_AT, REMARK
-          ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP(), ?)
-        `
-        const params = [details.giftId, details.fromStatus, details.toStatus, userId, details.remark || null]
-        await executeQuery(insertSQL, params)
-      } catch (snowflakeError) {
-        console.warn('Snowflake timeline logging failed:', snowflakeError)
-        // Continue execution - don't fail the entire request if Snowflake fails
-      }
-    }
+    // Note: Timeline logging is now handled automatically in each API endpoint
+    // This prevents duplicate timeline entries
 
     return NextResponse.json({
       success: true,

@@ -117,12 +117,12 @@ ADD COLUMN BATCH_ID VARCHAR(50);
 
 ```sql
 -- For all tabs: Update IS_ACTIVE to FALSE (soft delete)
-UPDATE MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES 
+UPDATE MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES
 SET IS_ACTIVE = FALSE, COMPLETED_AT = CURRENT_TIMESTAMP()
 WHERE BATCH_ID = 'BATCH_123';
 
 -- Remove BATCH_ID from GIFT_DETAILS to make them invisible
-UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
+UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS
 SET BATCH_ID = NULL, LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
 WHERE BATCH_ID = 'BATCH_123';
 ```
@@ -135,14 +135,14 @@ WHERE BATCH_ID = 'BATCH_123';
 
 ```typescript
 // Frontend validates ALL data before sending to backend
-const validation = validateCSV(csvData);
+const validation = validateCSV(csvData)
 if (!validation.isValid) {
   // Show errors, don't proceed to import
-  return { success: false, errors: validation.errors };
+  return { success: false, errors: validation.errors }
 }
 
 // Only valid data reaches backend
-await importValidatedData(validation.data);
+await importValidatedData(validation.data)
 ```
 
 **Benefits:**
@@ -156,7 +156,7 @@ await importValidatedData(validation.data);
 
 ```typescript
 // Send all data to backend, handle failures individually
-const result = await attemptImport(csvData);
+const result = await attemptImport(csvData)
 // Returns: { success: true, importedCount: 8, failedCount: 2, failedRows: [...] }
 ```
 
@@ -172,9 +172,9 @@ const result = await attemptImport(csvData);
 
    ```typescript
    // Validate CSV structure and data
-   const validation = validateCSV(csvData);
+   const validation = validateCSV(csvData)
    if (!validation.isValid) {
-     return { success: false, errors: validation.errors };
+     return { success: false, errors: validation.errors }
    }
    ```
 
@@ -182,29 +182,29 @@ const result = await attemptImport(csvData);
 
    ```typescript
    // Create batch record before import
-   const batchId = `BATCH_${Date.now()}_${randomString}`;
-   await createBatchRecord(batchId, transactionId, data.length);
+   const batchId = `BATCH_${Date.now()}_${randomString}`
+   await createBatchRecord(batchId, transactionId, data.length)
    ```
 
 3. **Atomic Import**
 
    ```typescript
    // Use database transaction
-   await executeQuery("BEGIN TRANSACTION");
+   await executeQuery('BEGIN TRANSACTION')
    try {
      // Import all records with batch ID
-     await importRecords(data, batchId);
-     await executeQuery("COMMIT");
+     await importRecords(data, batchId)
+     await executeQuery('COMMIT')
    } catch (error) {
-     await executeQuery("ROLLBACK");
-     throw error;
+     await executeQuery('ROLLBACK')
+     throw error
    }
    ```
 
 4. **Post-Import Logging**
    ```typescript
    // Update batch with results
-   await updateBatchStatus(batchId, "COMPLETED", importedCount);
+   await updateBatchStatus(batchId, 'COMPLETED', importedCount)
    ```
 
 ### **Rollback Process:**
@@ -213,7 +213,7 @@ const result = await attemptImport(csvData);
 
    ```typescript
    // Find batch by batch ID
-   const batch = await getBatchDetails(batchId);
+   const batch = await getBatchDetails(batchId)
    ```
 
 2. **Execute Rollback**
@@ -221,19 +221,19 @@ const result = await attemptImport(csvData);
    ```typescript
    // Rollback based on tab type
    switch (batch.tab) {
-     case "pending":
-       await deleteBatchRecords(batchId);
-       break;
-     case "processing":
-       await revertToPreviousState(batchId);
-       break;
+     case 'pending':
+       await deleteBatchRecords(batchId)
+       break
+     case 'processing':
+       await revertToPreviousState(batchId)
+       break
    }
    ```
 
 3. **Update Logs**
    ```typescript
    // Mark batch as rolled back
-   await updateBatchStatus(batchId, "ROLLED_BACK", rolledBackCount);
+   await updateBatchStatus(batchId, 'ROLLED_BACK', rolledBackCount)
    ```
 
 ## 🚨 **Error Prevention Strategies**
@@ -342,7 +342,7 @@ SELECT * FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE BATCH_ID = 'BATCH_123';
 ```sql
 -- Update specific records
 UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS
-SET COST_MYR = 1000, CATEGORY = 'Birthday'
+SET COST_BASE = 1000, CATEGORY = 'Birthday'
 WHERE GIFT_ID = 123 AND BATCH_ID = 'BATCH_123';
 ```
 

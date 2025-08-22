@@ -33,9 +33,9 @@ export async function GET(request: NextRequest) {
     const totalsSQL = `
       SELECT 
         COUNT(*) as totalGifts,
-        SUM(COST_MYR) as totalValueMyr,
+        SUM(COST_BASE) as totalValueMyr,
         SUM(COST_VND) as totalValueVnd,
-        AVG(COST_MYR) as averageCostMyr,
+        AVG(COST_BASE) as averageCostMyr,
         AVG(COST_VND) as averageCostVnd
       FROM MY_FLOW.PUBLIC.GIFT_DETAILS
       WHERE ${whereClause}
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
       SELECT 
         KAM_REQUESTED_BY,
         COUNT(*) as requestCount,
-        SUM(COST_MYR) as totalValue
+        SUM(COST_BASE) as totalValue
       FROM MY_FLOW.PUBLIC.GIFT_DETAILS
       WHERE ${whereClause}
         AND KAM_REQUESTED_BY IS NOT NULL
@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
       SELECT 
         DATE_TRUNC('month', CREATED_DATE) as month,
         COUNT(*) as count,
-        SUM(COST_MYR) as totalValue
+        SUM(COST_BASE) as totalValue
       FROM MY_FLOW.PUBLIC.GIFT_DETAILS
       WHERE ${whereClause}
         AND CREATED_DATE >= DATEADD(month, -6, CURRENT_DATE())

@@ -535,25 +535,25 @@ All endpoints return consistent error responses:
 ### WorkflowStatus
 
 ```typescript
-type WorkflowStatus = "KAM_Request" | "Manager_Review" | "MKTOps_Processing" | "KAM_Proof" | "SalesOps_Audit" | "Completed" | "Rejected";
+type WorkflowStatus = 'KAM_Request' | 'Manager_Review' | 'MKTOps_Processing' | 'KAM_Proof' | 'SalesOps_Audit' | 'Completed' | 'Rejected'
 ```
 
 ### GiftCategory
 
 ```typescript
-type GiftCategory = "Birthday" | "Retention" | "High Roller" | "Promotion" | "Other";
+type GiftCategory = 'Birthday' | 'Retention' | 'High Roller' | 'Promotion' | 'Other'
 ```
 
 ### TrackingStatus
 
 ```typescript
-type TrackingStatus = "Pending" | "In Transit" | "Delivered" | "Failed" | "Returned";
+type TrackingStatus = 'Pending' | 'In Transit' | 'Delivered' | 'Failed' | 'Returned'
 ```
 
 ### BatchStatus
 
 ```typescript
-type BatchStatus = boolean; // true for active, false for inactive
+type BatchStatus = boolean // true for active, false for inactive
 ```
 
 ## 9. Database Schema Reference
@@ -566,7 +566,7 @@ The main table `MY_FLOW.PUBLIC.GIFT_DETAILS` contains all gift request data with
 - **VIP_ID**: Reference to VIP player
 - **BATCH_ID**: Reference to bulk import batch (if applicable)
 - **WORKFLOW_STATUS**: Current stage in the approval workflow
-- **COST_MYR/COST_VND**: Gift cost in different currencies
+- **COST_BASE/COST_VND**: Gift cost in different currencies
 - **Tracking fields**: DISPATCHER, TRACKING_CODE, TRACKING_STATUS
 - **Proof fields**: MKT_PROOF, KAM_PROOF, GIFT_FEEDBACK
 - **Audit fields**: AUDITED_BY, AUDIT_DATE, AUDIT_REMARK
@@ -576,7 +576,7 @@ The main table `MY_FLOW.PUBLIC.GIFT_DETAILS` contains all gift request data with
 The batch tracking table `MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES` contains:
 
 - **BATCH_ID**: Auto-incrementing primary key (starts at 10)
-- **BATCH_NAME**: Human-readable batch name (Format: BATCH_{uploader name}_{date time})
+- **BATCH_NAME**: Human-readable batch name (Format: BATCH*{uploader name}*{date time})
 - **UPLOADED_BY**: User who created the batch
 - **TOTAL_ROWS**: Number of rows in the batch
 - **IS_ACTIVE**: Batch status (TRUE/FALSE)
@@ -589,78 +589,78 @@ The batch tracking table `MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES` contains:
 ### Fetch Pending Gifts
 
 ```javascript
-const response = await fetch("/api/gift-approval?workflowStatus=Manager_Review&page=1&limit=20");
-const data = await response.json();
+const response = await fetch('/api/gift-approval?workflowStatus=Manager_Review&page=1&limit=20')
+const data = await response.json()
 ```
 
 ### Update Gift to Processing
 
 ```javascript
-const response = await fetch("/api/gift-approval/123", {
-  method: "PUT",
-  headers: { "Content-Type": "application/json" },
+const response = await fetch('/api/gift-approval/123', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    workflowStatus: "MKTOps_Processing",
-    dispatcher: "FedEx",
-    trackingCode: "FX123456789",
-    trackingStatus: "In Transit",
-    uploadedBy: "mktops@example.com",
+    workflowStatus: 'MKTOps_Processing',
+    dispatcher: 'FedEx',
+    trackingCode: 'FX123456789',
+    trackingStatus: 'In Transit',
+    uploadedBy: 'mktops@example.com',
   }),
-});
+})
 ```
 
 ### Get Statistics for Last Month
 
 ```javascript
-const response = await fetch("/api/gift-approval/statistics?dateFrom=2024-01-01&dateTo=2024-01-31");
-const stats = await response.json();
+const response = await fetch('/api/gift-approval/statistics?dateFrom=2024-01-01&dateTo=2024-01-31')
+const stats = await response.json()
 ```
 
 ### Bulk Approve Gifts
 
 ```javascript
-const response = await fetch("/api/gift-approval/bulk-actions", {
-  method: "PUT",
-  headers: { "Content-Type": "application/json" },
+const response = await fetch('/api/gift-approval/bulk-actions', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    action: "approve",
+    action: 'approve',
     giftIds: [1, 2, 3, 4, 5],
-    workflowStatus: "MKTOps_Processing",
-    uploadedBy: "manager@example.com",
+    workflowStatus: 'MKTOps_Processing',
+    uploadedBy: 'manager@example.com',
   }),
-});
+})
 ```
 
 ### Bulk Reject Gifts
 
 ```javascript
-const response = await fetch("/api/gift-approval/bulk-actions", {
-  method: "PUT",
-  headers: { "Content-Type": "application/json" },
+const response = await fetch('/api/gift-approval/bulk-actions', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    action: "reject",
+    action: 'reject',
     giftIds: [1, 2, 3],
-    reason: "Budget exceeded for this quarter",
-    uploadedBy: "manager@example.com",
+    reason: 'Budget exceeded for this quarter',
+    uploadedBy: 'manager@example.com',
   }),
-});
+})
 ```
 
 ### Bulk Update Tracking
 
 ```javascript
-const response = await fetch("/api/gift-approval/bulk-actions", {
-  method: "PUT",
-  headers: { "Content-Type": "application/json" },
+const response = await fetch('/api/gift-approval/bulk-actions', {
+  method: 'PUT',
+  headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    action: "process",
+    action: 'process',
     giftIds: [1, 2, 3],
-    dispatcher: "FedEx",
-    trackingCode: "FX123456789",
-    trackingStatus: "In Transit",
-    uploadedBy: "mktops@example.com",
+    dispatcher: 'FedEx',
+    trackingCode: 'FX123456789',
+    trackingStatus: 'In Transit',
+    uploadedBy: 'mktops@example.com',
   }),
-});
+})
 ```
 
 ---

@@ -10,41 +10,33 @@ interface TimelineLogRequest {
   remark?: string
 }
 
-// POST - Insert timeline event (for logging status changes)
+// POST - Insert timeline event (DEPRECATED - timeline logging now handled automatically in each API)
 export async function POST(request: NextRequest) {
   try {
+    console.warn('⚠️ DEPRECATED: Direct timeline logging via /api/gift-approval/log-timeline is deprecated. Timeline events are now automatically logged in each API endpoint.')
+
     const { giftId, fromStatus, toStatus, changedBy, remark }: TimelineLogRequest = await request.json()
 
-    // Validate required fields
-    if (!giftId || !toStatus || !changedBy) {
-      return NextResponse.json({
+    // Return deprecation notice instead of processing
+    return NextResponse.json(
+      {
         success: false,
-        message: 'Missing required fields: giftId, toStatus, changedBy',
-      })
-    }
-
-    // Insert into GIFT_WORKFLOW_TIMELINE table
-    const insertSQL = `
-      INSERT INTO MY_FLOW.PUBLIC.GIFT_WORKFLOW_TIMELINE (
-        GIFT_ID, FROM_STATUS, TO_STATUS, CHANGED_BY, CHANGED_AT, REMARK
-      ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP(), ?)
-    `
-
-    const params = [giftId, fromStatus || null, toStatus, changedBy, remark || null]
-    debugSQL(insertSQL, params, 'Gift Workflow Timeline Insert')
-    await executeQuery(insertSQL, params)
-
-    return NextResponse.json({
-      success: true,
-      message: 'Timeline event logged successfully',
-    })
+        message: 'DEPRECATED: Direct timeline logging is no longer supported. Timeline events are automatically logged in each API endpoint.',
+        deprecated: true,
+      },
+      { status: 410 }
+    ) // 410 Gone - indicates the resource is no longer available
   } catch (error) {
-    console.error('Error logging timeline event:', error)
-    return NextResponse.json({
-      success: false,
-      message: 'Failed to log timeline event',
-      error: error instanceof Error ? error.message : 'Unknown error',
-    })
+    console.error('Error in deprecated timeline endpoint:', error)
+    return NextResponse.json(
+      {
+        success: false,
+        message: 'DEPRECATED: This endpoint is no longer supported',
+        deprecated: true,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 410 }
+    )
   }
 }
 

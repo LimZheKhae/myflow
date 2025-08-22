@@ -412,7 +412,7 @@ PHONE VARCHAR(16777216),
 ADDRESS VARCHAR(16777216),
 REWARD_NAME VARCHAR(16777216),
 GIFT_ITEM VARCHAR(16777216),
-COST_MYR NUMBER(38,0),
+COST_BASE NUMBER(38,0),
 COST_VND NUMBER(38,0),
 REMARK VARCHAR(16777216),
 REWARD_CLUB_ORDER VARCHAR(16777216),
@@ -493,7 +493,7 @@ CREATE TABLE MY_FLOW.PUBLIC.GIFT_REQUESTS (
   MKTOPS_STATUS VARCHAR,
   -- KAM Proof fields
   KAM_PROOF_FILE VARCHAR,
-  KAM_RECEIVER_FEEDBACK TEXT,
+  GIFT_FEEDBACK TEXT,
   KAM_UPLOADED_BY VARCHAR,
   KAM_UPLOADED_DATE TIMESTAMP,
   -- SalesOps fields
@@ -552,7 +552,7 @@ CREATE OR REPLACE TABLE MY_FLOW.PUBLIC.GIFT_DETAILS (
   ADDRESS VARCHAR(16777216),
   REWARD_NAME VARCHAR(16777216),
   GIFT_ITEM VARCHAR(16777216),
-  COST_MYR NUMBER(38,0),
+  COST_BASE NUMBER(38,0),
   COST_VND NUMBER(38,0),
   REMARK VARCHAR(16777216),
   REWARD_CLUB_ORDER VARCHAR(16777216),
@@ -649,7 +649,7 @@ CREATE OR REPLACE TABLE MY_FLOW.PUBLIC.GIFT_DETAILS (
     ADDRESS VARCHAR(16777216),
     REWARD_NAME VARCHAR(16777216),
     GIFT_ITEM VARCHAR(16777216),
-    COST_MYR NUMBER(38,0),
+    COST_BASE NUMBER(38,0),
     COST_VND NUMBER(38,0),
     REMARK VARCHAR(16777216),
     REWARD_CLUB_ORDER VARCHAR(16777216),
@@ -765,7 +765,7 @@ The main table `MY_FLOW.PUBLIC.GIFT_DETAILS` contains all gift request data with
 - **VIP_ID**: Reference to VIP player
 - **BATCH_ID**: Reference to bulk import batch (if applicable)
 - **WORKFLOW_STATUS**: Current stage in the approval workflow
-- **COST_MYR/COST_VND**: Gift cost in different currencies
+- **COST_BASE/COST_VND**: Gift cost in different currencies
 - **Tracking fields**: DISPATCHER, TRACKING_CODE, TRACKING_STATUS
 - **Proof fields**: MKT_PROOF, KAM_PROOF, GIFT_FEEDBACK
 - **Audit fields**: AUDITED_BY, AUDIT_DATE, AUDIT_REMARK
@@ -1038,7 +1038,7 @@ Perfect! I've corrected all the documentation to reflect the actual database sch
 
 - **GIFT_ID**: Auto-incrementing primary key (starts at 100)
 - **BATCH_ID**: Links to BULK_IMPORT_BATCHES table
-- **COST_MYR/COST_VND**: Separate currency fields (not a single COST field)
+- **COST_BASE/COST_VND**: Separate currency fields (not a single COST field)
 - **WORKFLOW_STATUS**: Tracks the current stage in the approval process
 - **All tracking fields**: DISPATCHER, TRACKING_CODE, TRACKING_STATUS
 - **All proof fields**: MKT_PROOF, KAM_PROOF, GIFT_FEEDBACK
@@ -1174,7 +1174,7 @@ export async function POST(request: NextRequest) {
       INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
         VIP_ID, BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
         MEMBER_LOGIN, FULL_NAME, PHONE, ADDRESS, REWARD_NAME, GIFT_ITEM,
-        COST_MYR, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+        COST_BASE, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
         LAST_MODIFIED_DATE
       ) VALUES (?, ?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
     `
@@ -1589,7 +1589,7 @@ export interface GiftRequestForm {
 - ✅ **KAM_REQUESTED_BY**: Current user's email
 - ✅ **WORKFLOW_STATUS**: "KAM_Request"
 - ✅ **GIFT_ITEM**: Gift description
-- ✅ **COST_MYR**: Gift value (from form)
+- ✅ **COST_BASE**: Gift value (from form)
 - ✅ **COST_VND**: null (for another system)
 - ✅ **CATEGORY**: Gift category
 - ✅ **CREATED_DATE**: Current timestamp
@@ -2309,7 +2309,7 @@ export async function POST(request: NextRequest) {
       INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
         VIP_ID, BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
         MEMBER_LOGIN, FULL_NAME, PHONE, ADDRESS, REWARD_NAME, GIFT_ITEM,
-        COST_MYR, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+        COST_BASE, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
         LAST_MODIFIED_DATE
       ) VALUES (?, ?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
     `
@@ -2714,7 +2714,7 @@ export async function POST(request: NextRequest) {
       INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
         VIP_ID, BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
         MEMBER_LOGIN, FULL_NAME, PHONE, ADDRESS, REWARD_NAME, GIFT_ITEM,
-        COST_MYR, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+        COST_BASE, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
         LAST_MODIFIED_DATE
       ) VALUES (?, ?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
     `
@@ -3336,7 +3336,7 @@ export async function POST(request: NextRequest) {
       INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
         VIP_ID, BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
         MEMBER_LOGIN, FULL_NAME, PHONE, ADDRESS, REWARD_NAME, GIFT_ITEM,
-        COST_MYR, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+        COST_BASE, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
         LAST_MODIFIED_DATE
       ) VALUES (?, ?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
     `
@@ -3740,7 +3740,7 @@ Now let me replace the console.log with the debugSQL function:
       INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
         VIP_ID, BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
         MEMBER_LOGIN, FULL_NAME, PHONE, ADDRESS, REWARD_NAME, GIFT_ITEM,
-        COST_MYR, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+        COST_BASE, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
         LAST_MODIFIED_DATE
       ) VALUES (?, ?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
     `;
@@ -3753,7 +3753,7 @@ Now let me replace the console.log with the debugSQL function:
       INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
         VIP_ID, BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
         MEMBER_LOGIN, FULL_NAME, PHONE, ADDRESS, REWARD_NAME, GIFT_ITEM,
-        COST_MYR, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+        COST_BASE, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
         LAST_MODIFIED_DATE
       ) VALUES (?, ?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
     `;
@@ -6763,7 +6763,7 @@ I can see that the bulk import API is already expecting `row.vipId` in the pendi
                 INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
                   VIP_ID, BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
                   MEMBER_LOGIN, FULL_NAME, PHONE, ADDRESS, REWARD_NAME, GIFT_ITEM,
-                  COST_MYR, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+                  COST_BASE, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
                   LAST_MODIFIED_DATE
                 ) VALUES (?, ?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
               `;
@@ -6793,7 +6793,7 @@ I can see that the bulk import API is already expecting `row.vipId` in the pendi
                 INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
                   VIP_ID, BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
                   MEMBER_LOGIN, FULL_NAME, PHONE, ADDRESS, REWARD_NAME, GIFT_ITEM,
-                  COST_MYR, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+                  COST_BASE, COST_VND, REMARK, REWARD_CLUB_ORDER, CATEGORY,
                   LAST_MODIFIED_DATE
                 ) VALUES (?, ?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
               `;
@@ -6956,7 +6956,7 @@ validatedData.vipId = vipId.toString()
 ```sql
 INSERT INTO GIFT_DETAILS (
   VIP_ID, BATCH_ID, KAM_REQUESTED_BY, WORKFLOW_STATUS,
-  MEMBER_LOGIN, GIFT_ITEM, COST_MYR, CATEGORY, ...
+  MEMBER_LOGIN, GIFT_ITEM, COST_BASE, CATEGORY, ...
 ) VALUES (
   1001, 123, 'user@example.com', 'KAM_Request',
   'john.anderson', 'Gift Card', 100, 'Birthday', ...
@@ -7073,7 +7073,7 @@ validatedData.vipId = vipId.toString()
 ```sql
 INSERT INTO GIFT_DETAILS (
   VIP_ID, BATCH_ID, KAM_REQUESTED_BY, WORKFLOW_STATUS,
-  MEMBER_LOGIN, GIFT_ITEM, COST_MYR, CATEGORY, ...
+  MEMBER_LOGIN, GIFT_ITEM, COST_BASE, CATEGORY, ...
 ) VALUES (
   1001, 123, 'user@example.com', 'KAM_Request',
   'john.anderson', 'Gift Card', 100, 'Birthday', ...
@@ -7405,7 +7405,7 @@ const validatedData = giftRequestFormSchema.parse(giftRequestData) // ✅ Succes
 
 ```sql
 INSERT INTO GIFT_DETAILS (
-  VIP_ID, MEMBER_LOGIN, GIFT_ITEM, COST_MYR, CATEGORY, ...
+  VIP_ID, MEMBER_LOGIN, GIFT_ITEM, COST_BASE, CATEGORY, ...
 ) VALUES (
   1, 'user123', 'Gift Card', 100, 'Birthday', ...
 )
@@ -7525,7 +7525,7 @@ const validatedData = giftRequestFormSchema.parse(giftRequestData) // ✅ Succes
 
 ```sql
 INSERT INTO GIFT_DETAILS (
-  VIP_ID, MEMBER_LOGIN, GIFT_ITEM, COST_MYR, CATEGORY, ...
+  VIP_ID, MEMBER_LOGIN, GIFT_ITEM, COST_BASE, CATEGORY, ...
 ) VALUES (
   1, 'user123', 'Gift Card', 100, 'Birthday', ...
 )
@@ -8018,7 +8018,7 @@ INSERT INTO BULK_IMPORT_BATCHES (
 -- Gift Insertion
 INSERT INTO GIFT_DETAILS (
   VIP_ID, BATCH_ID, KAM_REQUESTED_BY, WORKFLOW_STATUS,
-  MEMBER_LOGIN, GIFT_ITEM, COST_MYR, CATEGORY, ...
+  MEMBER_LOGIN, GIFT_ITEM, COST_BASE, CATEGORY, ...
 ) VALUES (1, 123, 'user@example.com', 'KAM_Request', 'user123', 'Gift Card', 100, 'Birthday', ...)
 
 -- Workflow Update
@@ -8144,7 +8144,7 @@ INSERT INTO BULK_IMPORT_BATCHES (
 -- Gift Insertion
 INSERT INTO GIFT_DETAILS (
   VIP_ID, BATCH_ID, KAM_REQUESTED_BY, WORKFLOW_STATUS,
-  MEMBER_LOGIN, GIFT_ITEM, COST_MYR, CATEGORY, ...
+  MEMBER_LOGIN, GIFT_ITEM, COST_BASE, CATEGORY, ...
 ) VALUES (1, 123, 'user@example.com', 'KAM_Request', 'user123', 'Gift Card', 100, 'Birthday', ...)
 
 -- Workflow Update
@@ -11116,7 +11116,7 @@ VIP_ID: 3
 MEMBER_LOGIN: "david.kim"
 FULL_NAME: "David Kim"
 GIFT_ITEM: "Gift Card"
-COST_MYR: 100
+COST_BASE: 100
 CATEGORY: "Birthday"
 ```
 
@@ -11262,7 +11262,7 @@ VIP_ID: 3
 MEMBER_LOGIN: "david.kim"
 FULL_NAME: "David Kim"
 GIFT_ITEM: "Gift Card"
-COST_MYR: 100
+COST_BASE: 100
 CATEGORY: "Birthday"
 ```
 
@@ -12660,7 +12660,6 @@ const result = await auditGift(giftId, userId, userRole, userPermissions, 'appro
 
 ```typescript
 import { GiftUpdateActions } from '@/components/gift-update-actions'
-
 ;<GiftUpdateActions
   giftId={123}
   tab="pending"
@@ -13216,7 +13215,7 @@ PHONE VARCHAR(16777216),
 ADDRESS VARCHAR(16777216),
 REWARD_NAME VARCHAR(16777216),
 GIFT_ITEM VARCHAR(16777216),
-COST_MYR NUMBER(38,0),
+COST_BASE NUMBER(38,0),
 COST_VND NUMBER(38,0),
 REMARK VARCHAR(16777216),
 REWARD_CLUB_ORDER VARCHAR(16777216),
@@ -13305,7 +13304,7 @@ PHONE VARCHAR(16777216),
 ADDRESS VARCHAR(16777216),
 REWARD_NAME VARCHAR(16777216),
 GIFT_ITEM VARCHAR(16777216),
-COST_MYR NUMBER(38,0),
+COST_BASE NUMBER(38,0),
 COST_VND NUMBER(38,0),
 REMARK VARCHAR(16777216),
 REWARD_CLUB_ORDER VARCHAR(16777216),
@@ -13343,7 +13342,7 @@ PHONE VARCHAR(16777216),
 ADDRESS VARCHAR(16777216),
 REWARD_NAME VARCHAR(16777216),
 GIFT_ITEM VARCHAR(16777216),
-COST_MYR NUMBER(38,0),
+COST_BASE NUMBER(38,0),
 COST_VND NUMBER(38,0),
 REMARK VARCHAR(16777216),
 REWARD_CLUB_ORDER VARCHAR(16777216),
@@ -14410,7 +14409,7 @@ PHONE VARCHAR(16777216),
 ADDRESS VARCHAR(16777216),
 REWARD_NAME VARCHAR(16777216),
 GIFT_ITEM VARCHAR(16777216),
-COST_MYR NUMBER(38,0),
+COST_BASE NUMBER(38,0),
 COST_VND NUMBER(38,0),
 REMARK VARCHAR(16777216),
 REWARD_CLUB_ORDER VARCHAR(16777216),
@@ -14470,7 +14469,7 @@ First, let me fix the update API to use the correct column:
 
 Now let me update the documentation to reflect the correct database schema:
 
-````markdown
+`````markdown
 ````sql
 -- Main gift details table (Master Table)
 CREATE OR REPLACE TABLE MY_FLOW.PUBLIC.GIFT_DETAILS (
@@ -14486,7 +14485,7 @@ CREATE OR REPLACE TABLE MY_FLOW.PUBLIC.GIFT_DETAILS (
     ADDRESS VARCHAR(16777216),
     REWARD_NAME VARCHAR(16777216),
     GIFT_ITEM VARCHAR(16777216),
-    COST_MYR NUMBER(38,0),
+    COST_BASE NUMBER(38,0),
     COST_VND NUMBER(38,0),
     REMARK VARCHAR(16777216),
     REWARD_CLUB_ORDER VARCHAR(16777216),
@@ -14526,7 +14525,7 @@ CREATE OR REPLACE TABLE MY_FLOW.PUBLIC.GIFT_DETAILS (
     ADDRESS VARCHAR(16777216),
     REWARD_NAME VARCHAR(16777216),
     GIFT_ITEM VARCHAR(16777216),
-    COST_MYR NUMBER(38,0),
+    COST_BASE NUMBER(38,0),
     COST_VND NUMBER(38,0),
     REMARK VARCHAR(16777216),
     REWARD_CLUB_ORDER VARCHAR(16777216),
@@ -14550,18 +14549,17 @@ CREATE OR REPLACE TABLE MY_FLOW.PUBLIC.GIFT_DETAILS (
     PRIMARY KEY (GIFT_ID)
 );
 ````
-````
+`````
 
-````
+```
+
+```
 
 Now I need to check if there are any other places in the code that might be using `AUDIT_REMARK` for rejection reasons. Let me check the bulk actions API:
 
-
 Let me check the bulk actions API to see if it needs updating:
 
-
 I can see that the bulk actions API is also using `AUDIT_REMARK` for rejection reasons. Let me fix this:
-
 
 ```typescript
       case "reject":
@@ -14585,7 +14583,7 @@ I can see that the bulk actions API is also using `AUDIT_REMARK` for rejection r
         updateParams.push(userId);
         updateFields.push("AUDIT_DATE = CURRENT_TIMESTAMP()");
         break;
-````
+```
 
 Now let me update the GIFT_UPDATE_API_DOCUMENTATION.md to reflect the correct column usage:
 
@@ -15032,7 +15030,7 @@ I can see that the `GiftRequestDetails` interface needs to be updated to include
       address: row.ADDRESS,
       rewardName: row.REWARD_NAME,
       giftItem: row.GIFT_ITEM,
-      costMyr: row.COST_MYR,
+      costMyr: row.COST_BASE,
       costVnd: row.COST_VND,
       remark: row.REMARK,
       rewardClubOrder: row.REWARD_CLUB_ORDER,
@@ -15069,7 +15067,7 @@ I can see that the `GiftRequestDetails` interface needs to be updated to include
       address: row.ADDRESS,
       rewardName: row.REWARD_NAME,
       giftItem: row.GIFT_ITEM,
-      costMyr: row.COST_MYR,
+      costMyr: row.COST_BASE,
       costVnd: row.COST_VND,
       remark: row.REMARK,
       rewardClubOrder: row.REWARD_CLUB_ORDER,
@@ -15144,7 +15142,7 @@ I can see that the `BULK_IMPORT_BATCHES` table has been updated with an `IS_ACTI
          ADDRESS,
          REWARD_NAME,
          GIFT_ITEM,
-         COST_MYR,
+         COST_BASE,
          COST_VND,
          REMARK,
          REWARD_CLUB_ORDER,
@@ -15180,7 +15178,7 @@ I can see that the `BULK_IMPORT_BATCHES` table has been updated with an `IS_ACTI
          ADDRESS,
          REWARD_NAME,
          GIFT_ITEM,
-         COST_MYR,
+         COST_BASE,
          COST_VND,
          REMARK,
          REWARD_CLUB_ORDER,
@@ -16670,7 +16668,7 @@ WHERE ID = 'GFT_123' AND BATCH_ID = 'BATCH_123';
 ```sql
 -- Update specific records
 UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS
-SET COST_MYR = 1000, CATEGORY = 'Birthday'
+SET COST_BASE = 1000, CATEGORY = 'Birthday'
 WHERE GIFT_ID = 123 AND BATCH_ID = 'BATCH_123';
 ```
 

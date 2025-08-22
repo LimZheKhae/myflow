@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
 import { debugSQL } from '@/lib/utils'
+import { logWorkflowTimeline } from '@/lib/workflow-timeline'
 
 interface BulkUpdateRequest {
   tab: string
@@ -89,8 +90,8 @@ export async function PUT(request: NextRequest) {
 
           switch (tab) {
             case 'processing':
-              // Convert uploadedBo to boolean
-              const uploadedBo = ['Yes', 'true', '1', true].includes(row.uploadedBo)
+              // Convert uploadedBo to boolean - expecting TRUE or FALSE
+              const uploadedBo = row.uploadedBo === true || row.uploadedBo === 'TRUE'
 
               updateSQL = `
                 UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
@@ -189,13 +190,15 @@ export async function PUT(request: NextRequest) {
 
             // Log to timeline if workflow status changed
             if (targetStatus) {
-              const timelineSQL = `
-                INSERT INTO MY_FLOW.PUBLIC.GIFT_WORKFLOW_TIMELINE (
-                  GIFT_ID, FROM_STATUS, TO_STATUS, CHANGED_BY, CHANGED_AT, REMARK
-                ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP(), ?)
-              `
+              const fromStatus = tab === 'processing' ? 'MKTOps_Processing' : tab === 'kam-proof' ? 'KAM_Proof' : 'SalesOps_Audit'
 
-              await executeQuery(timelineSQL, [parseInt(row.giftId), tab === 'processing' ? 'MKTOps_Processing' : tab === 'kam-proof' ? 'KAM_Proof' : 'SalesOps_Audit', targetStatus, userId, `Bulk update: ${tab}`])
+              await logWorkflowTimeline({
+                giftId: parseInt(row.giftId),
+                fromStatus: fromStatus,
+                toStatus: targetStatus,
+                changedBy: userId,
+                remark: `Bulk update: ${tab} stage`,
+              })
             }
           }
         } catch (rowError) {

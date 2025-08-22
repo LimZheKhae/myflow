@@ -101,7 +101,7 @@ CREATE OR REPLACE TABLE MY_FLOW.PUBLIC.GIFT_DETAILS (
   ADDRESS VARCHAR(16777216),
   REWARD_NAME VARCHAR(16777216),
   GIFT_ITEM VARCHAR(16777216),
-  COST_MYR NUMBER(38,0),
+  COST_BASE NUMBER(38,0),
   COST_VND NUMBER(38,0),
   REMARK VARCHAR(16777216),
   REWARD_CLUB_ORDER VARCHAR(16777216),
@@ -341,4 +341,3 @@ GFT002,FedEx,FDX987654321,Delivered
 - [ ] **Batch Rollback** - Ability to deactivate entire batches
 - [ ] **Batch Merging** - Combine multiple batches
 - [ ] **Batch Analytics** - Performance metrics per batch
-

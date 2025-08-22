@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
           SELECT 
             GIFT_ID,
             GIFT_ITEM,
-            COST_MYR,
+            COST_BASE,
             MEMBER_LOGIN,
             DISPATCHER,
             TRACKING_CODE,
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
           SELECT 
             GIFT_ID,
             GIFT_ITEM,
-            COST_MYR,
+            COST_BASE,
             MEMBER_LOGIN,
             GIFT_FEEDBACK,
             WORKFLOW_STATUS
