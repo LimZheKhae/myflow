@@ -2913,7 +2913,9 @@ export default function Gifts() {
                                     <Input id="checkerName" value={user?.name || user?.email || 'Unknown'} disabled className="bg-gray-50 cursor-not-allowed" />
                                   </div>
                                   <div>
-                                    <Label htmlFor="completionRemark">Audit Remark (Optional)</Label>
+                                    <Label htmlFor="completionRemark">
+                                      Audit Remark <span className="text-xs text-red-500">*</span>
+                                    </Label>
                                     <Textarea id="completionRemark" placeholder="Enter completion remarks..." value={auditRemark} onChange={(e) => setAuditRemark(e.target.value)} rows={3} className="mt-1" />
                                   </div>
                                   <div className="flex justify-end space-x-2">
@@ -3466,7 +3468,7 @@ export default function Gifts() {
 
               <div className="space-y-2">
                 <Label htmlFor="auditRemark" className="text-sm font-medium">
-                  Audit Remark
+                  Audit Remark <span className="text-red-500">*</span>
                 </Label>
                 <Textarea id="auditRemark" placeholder="Enter any audit remarks or observations..." value={auditRemark} onChange={(e) => setAuditRemark(e.target.value)} rows={4} />
               </div>
