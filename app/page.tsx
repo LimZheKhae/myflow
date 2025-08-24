@@ -1,43 +1,43 @@
-"use client"
+'use client'
 
-import { useFirebaseAuth } from "@/contexts/firebase-auth-context"
-import FirebaseLoginForm from "@/components/auth/firebase-login-form"
-import Sidebar from "@/components/layout/sidebar"
-import { Card, CardContent } from "@/components/ui/card"
-import { Users, Target, Gift, Settings, TrendingUp, BarChart3, Sparkles } from "lucide-react"
+import { useFirebaseAuth } from '@/contexts/firebase-auth-context'
+import FirebaseLoginForm from '@/components/auth/firebase-login-form'
+import Sidebar from '@/components/layout/sidebar'
+import { Card, CardContent } from '@/components/ui/card'
+import { Users, Target, Gift, Settings, TrendingUp, BarChart3, Sparkles } from 'lucide-react'
 
 const moduleCards = [
   {
-    title: "VIP Profiles",
-    description: "Manage VIP player data and relationships",
+    title: 'VIP Profiles',
+    description: 'Manage VIP player data and relationships',
     icon: Users,
-    color: "from-emerald-500 to-teal-600",
-    bgColor: "from-emerald-50 to-teal-50",
-    stats: "150+ Players",
+    color: 'from-emerald-500 to-teal-600',
+    bgColor: 'from-emerald-50 to-teal-50',
+    stats: '150+ Players',
   },
   {
-    title: "Campaigns",
-    description: "Create and manage retention campaigns",
+    title: 'Campaigns',
+    description: 'Create and manage retention campaigns',
     icon: Target,
-    color: "from-blue-500 to-indigo-600",
-    bgColor: "from-blue-50 to-indigo-50",
-    stats: "12 Active",
+    color: 'from-blue-500 to-indigo-600',
+    bgColor: 'from-blue-50 to-indigo-50',
+    stats: '12 Active',
   },
   {
-    title: "Gift Approval",
-    description: "Handle gift requests and approvals",
+    title: 'Gift Approval',
+    description: 'Handle gift requests and approvals',
     icon: Gift,
-    color: "from-purple-500 to-pink-600",
-    bgColor: "from-purple-50 to-pink-50",
-    stats: "8 Pending",
+    color: 'from-purple-500 to-pink-600',
+    bgColor: 'from-purple-50 to-pink-50',
+    stats: '8 Pending',
   },
   {
-    title: "User Management",
-    description: "Manage user permissions and access",
+    title: 'User Management',
+    description: 'Manage user permissions and access',
     icon: Settings,
-    color: "from-orange-500 to-red-600",
-    bgColor: "from-orange-50 to-red-50",
-    stats: "25 Users",
+    color: 'from-orange-500 to-red-600',
+    bgColor: 'from-orange-50 to-red-50',
+    stats: '25 Users',
   },
 ]
 
@@ -105,27 +105,15 @@ export default function HomePage() {
             {/* Module Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {moduleCards.map((module, index) => (
-                <Card
-                  key={module.title}
-                  className="glass-card hover-lift border-0 shadow-xl group cursor-pointer transition-all duration-300"
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
+                <Card key={module.title} className="glass-card hover-lift border-0 shadow-xl group cursor-pointer transition-all duration-300" style={{ animationDelay: `${index * 100}ms` }}>
                   <CardContent className={`p-6 bg-gradient-to-br ${module.bgColor} border border-white/20`}>
                     <div className="text-center">
-                      <div
-                        className={`w-16 h-16 bg-gradient-to-r ${module.color} rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl group-hover:scale-110 transition-transform duration-300`}
-                      >
+                      <div className={`w-16 h-16 bg-gradient-to-r ${module.color} rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl group-hover:scale-110 transition-transform duration-300`}>
                         <module.icon className="w-8 h-8 text-white" />
                       </div>
-                      <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:scale-105 transition-transform duration-300">
-                        {module.title}
-                      </h3>
+                      <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:scale-105 transition-transform duration-300">{module.title}</h3>
                       <p className="text-sm text-gray-600 mb-3 leading-relaxed">{module.description}</p>
-                      <div
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gradient-to-r ${module.color} text-white shadow-lg`}
-                      >
-                        {module.stats}
-                      </div>
+                      <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gradient-to-r ${module.color} text-white shadow-lg`}>{module.stats}</div>
                     </div>
                   </CardContent>
                 </Card>
@@ -136,15 +124,9 @@ export default function HomePage() {
             <div className="mt-12 p-6 bg-gradient-to-r from-blue-50 via-purple-50 to-indigo-50 rounded-2xl border border-blue-100 shadow-lg">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h3>
               <div className="flex flex-wrap justify-center gap-4">
-                <button className="px-4 py-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium text-gray-700 hover:text-blue-600 border border-gray-200 hover:border-blue-300">
-                  View Recent Activity
-                </button>
-                <button className="px-4 py-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium text-gray-700 hover:text-purple-600 border border-gray-200 hover:border-purple-300">
-                  Generate Report
-                </button>
-                <button className="px-4 py-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium text-gray-700 hover:text-green-600 border border-gray-200 hover:border-green-300">
-                  System Settings
-                </button>
+                <button className="px-4 py-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium text-gray-700 hover:text-blue-600 border border-gray-200 hover:border-blue-300">View Recent Activity</button>
+                <button className="px-4 py-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium text-gray-700 hover:text-purple-600 border border-gray-200 hover:border-purple-300">Generate Report</button>
+                <button className="px-4 py-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 text-sm font-medium text-gray-700 hover:text-green-600 border border-gray-200 hover:border-green-300">System Settings</button>
               </div>
             </div>
           </div>

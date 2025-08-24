@@ -57,6 +57,14 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null)
   const [activeTab, setActiveTab] = useState('upload')
 
+  // Reset function to clear all state when dialog closes
+  const resetDialog = () => {
+    setValidationResult(null)
+    setUploadResult(null)
+    setActiveTab('upload')
+    setIsUploading(false)
+  }
+
   // CSV validation rules based on module and tab
   const getValidationRules = () => {
     const rules: Record<string, Record<string, any>> = {
@@ -639,7 +647,15 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        setIsOpen(open)
+        if (!open) {
+          resetDialog()
+        }
+      }}
+    >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="w-[98vw] max-w-none max-h-[95vh] overflow-y-auto min-w-[1200px]">
         <DialogHeader>
@@ -855,7 +871,12 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                     <Button variant="outline" onClick={handleRollback} disabled={isUploading}>
                       {isUploading ? 'Rolling back...' : 'Rollback Import'}
                     </Button>
-                    <Button onClick={() => setIsOpen(false)}>Close</Button>
+                    <div className="flex space-x-2">
+                      <Button variant="outline" onClick={resetDialog}>
+                        Import More
+                      </Button>
+                      <Button onClick={() => setIsOpen(false)}>Close</Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
