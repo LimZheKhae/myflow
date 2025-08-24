@@ -3,45 +3,20 @@ import { NextRequest, NextResponse } from 'next/server'
 // Define protected routes and their required modules
 const ROUTE_MODULE_MAP: Record<string, string> = {
   '/vip-profile': 'vip-profile',
-  '/campaign': 'campaign', 
+  '/campaign': 'campaign',
   '/gift-approval': 'gift-approval',
   '/user-management': 'user-management',
 }
 
 // Public routes that don't require authentication
-const PUBLIC_ROUTES = ['/']
+const PUBLIC_ROUTES = ['/login', '/forgot-password', '/reset-password']
 
 // Routes that require authentication but no specific module permissions
 const AUTH_ONLY_ROUTES = ['/profile']
 
-async function getUserFromToken(request: NextRequest) {
-  try {
-    // Get Firebase auth token from cookies or headers
-    const authToken = request.cookies.get('__session')?.value || 
-                     request.headers.get('authorization')?.replace('Bearer ', '')
-    
-    if (!authToken) {
-      return null
-    }
-
-    // For server-side Firebase auth verification, you would typically:
-    // 1. Verify the token with Firebase Admin SDK
-    // 2. Get user data from Firestore
-    
-    // Since we're in middleware and want to avoid heavy operations,
-    // we'll use a different approach - check if the client-side auth is valid
-    // by making a request to an API endpoint that validates the session
-    
-    return null // Placeholder - will be handled by client-side redirect
-  } catch (error) {
-    console.error('Error verifying auth token:', error)
-    return null
-  }
-}
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
-  
+
   // Skip middleware for static files, API routes, and Next.js internals
   if (
     pathname.startsWith('/_next') ||
@@ -57,11 +32,36 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // For protected routes, we need to handle this client-side due to Firebase Auth limitations
-  // Create a response that includes auth check instructions
+  // Check for Firebase auth token in cookies
+  const authToken = request.cookies.get('firebase-auth-token')?.value || request.cookies.get('__session')?.value
+
+  // If no auth token and trying to access protected route, redirect to login
+  if (!authToken && pathname !== '/') {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
+  // If user is on login page but has valid token, redirect to home
+  if (pathname === '/login' && authToken) {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+
+  // For the home page, allow access but let client-side handle auth state
+  if (pathname === '/') {
+    return NextResponse.next()
+  }
+
+  // For other protected routes, only redirect if no token exists
+  // Let client-side handle token validation to avoid middleware complexity
+  if (!authToken && pathname !== '/') {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
+  // For protected routes, add headers to indicate which module permission is required
   const response = NextResponse.next()
-  
-  // Add headers to indicate which module permission is required
   const requiredModule = getRequiredModule(pathname)
   if (requiredModule) {
     response.headers.set('x-required-module', requiredModule)

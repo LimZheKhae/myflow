@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useFirebaseAuth } from '@/contexts/firebase-auth-context'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,14 +10,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, LogIn, Eye, EyeOff, Shield, AlertCircle, Lock } from 'lucide-react'
 
-export default function FirebaseLoginForm() {
+function FirebaseLoginFormContent() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const [emailFocused, setEmailFocused] = useState(false)
   const [passwordFocused, setPasswordFocused] = useState(false)
-  const { login, error } = useFirebaseAuth()
+  const { login, error, user, loading } = useFirebaseAuth()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    // If user is already authenticated, redirect them
+    if (user && !loading) {
+      const redirectTo = searchParams.get('redirect') || '/'
+      router.push(redirectTo)
+    }
+  }, [user, loading, router, searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,6 +40,9 @@ export default function FirebaseLoginForm() {
 
     try {
       await login(email, password)
+      // After successful login, redirect to the intended page
+      const redirectTo = searchParams.get('redirect') || '/'
+      router.push(redirectTo)
     } catch (error) {
       // Error is handled by the context
       console.error('Login failed:', error)
@@ -55,6 +69,23 @@ export default function FirebaseLoginForm() {
       return 'Network error. Please check your internet connection and try again.'
     }
     return error
+  }
+
+  // Show loading while checking authentication status
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-slate-50 via-white to-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // If user is authenticated, don't show login form
+  if (user) {
+    return null
   }
 
   return (
@@ -144,5 +175,22 @@ export default function FirebaseLoginForm() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function FirebaseLoginForm() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-slate-50 via-white to-gray-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <FirebaseLoginFormContent />
+    </Suspense>
   )
 }
