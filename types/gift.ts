@@ -4,9 +4,9 @@ import { z } from 'zod'
 
 // Zod schema for gift request form validation
 export const giftRequestFormSchema = z.object({
-  vipId: z.string().min(1, 'VIP Player is required'),
   memberName: z.string().min(1, 'Member name is required'),
   memberLogin: z.string().min(1, 'Member login is required'),
+  memberId: z.number().min(1, 'Member ID is required'),
   giftItem: z.string().min(1, 'Gift item is required'),
   rewardName: z.string().optional(),
   rewardClubOrder: z.string().optional(),
@@ -39,6 +39,7 @@ export interface GiftRequestDetails {
   workflowStatus: WorkflowStatus | null
 
   // Player Information
+  memberId: string | null
   memberLogin: string | null
   fullName: string | null
   phone: string | null
@@ -141,9 +142,9 @@ export interface AuditTabRow {
 
 // Form Types for UI
 export interface GiftRequestForm {
-  vipId: string // Required: VIP Player ID
   memberName: string // Required: VIP Member Name
   memberLogin: string // Required: VIP Member Login
+  memberId?: number // Optional: Member ID from member profile
   giftItem: string // Required: Gift item description
   rewardName?: string // Optional: Reward name
   rewardClubOrder?: string // Optional: Reward club order

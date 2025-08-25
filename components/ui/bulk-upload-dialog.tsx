@@ -110,7 +110,6 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
 
       if (member) {
         return {
-          vipId: member.memberId.toString(),
           memberName: member.memberName,
           memberLogin: member.memberLogin,
           memberId: member.memberId,
@@ -170,10 +169,10 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
           // Create a map for fast lookup
           bulkValidationResult.valid.forEach((player: any) => {
             validationMap.set(player.memberLogin.toLowerCase(), {
-              vipId: '1', // Default VIP ID for now
               memberName: player.memberName,
               memberLogin: player.memberLogin,
               memberId: player.memberId,
+              currency: player.currency,
             })
           })
 
@@ -255,9 +254,9 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
 
                 // Transform CSV row to match Zod schema format with the member data
                 const giftRequestData = {
-                  vipId: '1', // Default VIP ID for now
                   memberName: memberData.memberName || row.memberLogin.trim(),
                   memberLogin: row.memberLogin.trim(),
+                  memberId: memberData.memberId,
                   giftItem: row.giftItem.trim(),
                   rewardName: row.rewardName?.trim() || '',
                   rewardClubOrder: row.rewardClubOrder?.trim() || '',
@@ -273,6 +272,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                 validData.push({
                   ...validatedData,
                   memberLogin: row.memberLogin.trim(),
+                  memberId: memberData.memberId,
                   costMyr: costMyr,
                   costLocal: costLocal,
                   currency: memberCurrency,
@@ -375,7 +375,6 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                 if (rowValid) {
                   // Transform CSV row to match Zod schema format with the member data
                   const giftRequestData = {
-                    vipId: '1', // Default VIP ID for now
                     memberName: row.memberLogin.trim(), // Use memberLogin as memberName for now
                     memberLogin: row.memberLogin.trim(),
                     giftItem: row.giftItem.trim(),

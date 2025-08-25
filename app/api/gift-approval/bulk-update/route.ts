@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
 import { debugSQL } from '@/lib/utils'
 import { logWorkflowTimeline } from '@/lib/workflow-timeline'
+import { NotificationService } from '@/services/notificationService'
+import { ServerNotificationService } from '@/services/serverNotificationService'
 
 interface BulkUpdateRequest {
   tab: string
@@ -214,6 +216,17 @@ export async function PUT(request: NextRequest) {
       // Commit transaction
       await executeQuery('COMMIT')
 
+      // Create notification for audit rejections (mark as issue)
+      if (tab === 'audit' && auditDecision === 'issue') {
+        try {
+          const rejectedGiftIds = data.map(row => parseInt(row.giftId))
+          await createBulkUpdateRejectNotification(rejectedGiftIds, userId)
+        } catch (notificationError) {
+          console.error('Error creating bulk update reject notification:', notificationError)
+          // Don't fail the request if notification creation fails
+        }
+      }
+
       const result: BulkUpdateResult = {
         success: failedCount === 0,
         message: failedCount === 0 ? `Successfully updated ${updatedCount} records` : `Updated ${updatedCount} records, ${failedCount} failed`,
@@ -235,5 +248,44 @@ export async function PUT(request: NextRequest) {
       updatedCount: 0,
       failedCount: 0,
     } as BulkUpdateResult)
+  }
+}
+
+// Helper function to create bulk update reject notifications (audit mark as issue)
+async function createBulkUpdateRejectNotification(giftIds: number[], userId: string) {
+  try {
+    await ServerNotificationService.createNotification({
+      userId: null, // Global notification
+      targetUserIds: null,
+      roles: ['KAM', 'ADMIN'], // KAM and Admin should be notified of audit rejections
+      module: 'gift-approval',
+      type: 'audit_rejection',
+      title: 'Audit Issues Found',
+      message: `${giftIds.length} gift(s) have been marked as issues during audit and returned to KAM Proof`,
+      action: 'bulk_audit_reject',
+      priority: 'high',
+      read: false,
+      readAt: null,
+      readBy: null,
+      data: {
+        giftIds,
+        rejectedBy: userId,
+        rejectedCount: giftIds.length,
+        auditAction: 'mark_as_issue',
+      },
+      actions: [
+        {
+          label: 'View Gifts',
+          action: 'navigate',
+          url: '/gift-approval',
+        },
+      ],
+      expiresAt: null,
+    })
+
+    console.log(`✅ Bulk update reject notification created for ${giftIds.length} gifts`)
+  } catch (error) {
+    console.error('Error creating bulk update reject notification:', error)
+    throw error
   }
 }

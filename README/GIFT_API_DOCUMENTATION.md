@@ -42,7 +42,7 @@ Fetch paginated gift data with filtering and search capabilities.
   "data": [
     {
       "giftId": 1,
-      "vipId": 123,
+      "memberId": 123,
       "batchId": "BATCH_001",
       "kamRequestedBy": "kam@example.com",
       "createdDate": "2024-01-15T10:30:00Z",
@@ -102,7 +102,7 @@ Fetch specific gift details by ID.
   "success": true,
   "data": {
     "giftId": 1,
-    "vipId": 123,
+    "memberId": "123",
     "batchId": "BATCH_001",
     "kamRequestedBy": "kam@example.com",
     "createdDate": "2024-01-15T10:30:00Z",
@@ -290,14 +290,19 @@ Create a new individual gift request.
 
 ```json
 {
-  "vipId": 123,
+  "memberName": "John Doe",
+  "memberLogin": "player123",
+  "memberId": 123,
   "giftItem": "iPhone 15",
   "rewardName": "VIP Reward",
   "rewardClubOrder": "RCO001",
   "value": "5000.00",
+  "valueLocal": "5000.00",
   "remark": "Birthday gift for VIP player",
   "category": "Birthday",
-  "createdBy": "kam@example.com"
+  "userId": "kam@example.com",
+  "userRole": "KAM",
+  "userPermissions": { "gift-approval": ["ADD"] }
 }
 ```
 
@@ -563,10 +568,11 @@ type BatchStatus = boolean // true for active, false for inactive
 The main table `MY_FLOW.PUBLIC.GIFT_DETAILS` contains all gift request data with the following key fields:
 
 - **GIFT_ID**: Auto-incrementing primary key (starts at 100)
-- **VIP_ID**: Reference to VIP player
+- **MEMBER_ID**: Reference to member profile (replaces VIP_ID)
 - **BATCH_ID**: Reference to bulk import batch (if applicable)
 - **WORKFLOW_STATUS**: Current stage in the approval workflow
-- **COST_BASE/COST_VND**: Gift cost in different currencies
+- **COST_BASE/COST_LOCAL**: Gift cost in MYR and local currency
+- **CURRENCY**: Member's currency (MYR, VND, etc.)
 - **Tracking fields**: DISPATCHER, TRACKING_CODE, TRACKING_STATUS
 - **Proof fields**: MKT_PROOF, KAM_PROOF, GIFT_FEEDBACK
 - **Audit fields**: AUDITED_BY, AUDIT_DATE, AUDIT_REMARK

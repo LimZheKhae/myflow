@@ -10,7 +10,6 @@ import RoleBasedActionPermission, { KAMOnlyAction, KAMAndAdminAction, AuditAndAb
 import { BulkUploadDialog } from '@/components/ui/bulk-upload-dialog'
 import { BulkUpdateDialog } from '@/components/ui/bulk-update-dialog'
 import AccessDenied from '@/components/common/access-denied'
-import { Loader2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Plus, Eye, Upload, CheckCircle, XCircle, Clock, Search, FileText, Truck, Shield, Calendar, User, Package, CheckSquare, Download, ArrowRight, ClipboardCheck, Edit, Users, AlertCircle } from 'lucide-react'
+import { Plus, Eye, Upload, CheckCircle, XCircle, Clock, Search, FileText, Truck, Shield, Calendar, User, Package, CheckSquare, Download, ArrowRight, ClipboardCheck, Edit, Users, AlertCircle, UserPlus, Camera, CheckCircle2, Circle, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -29,8 +28,213 @@ import { exportToCSV, formatMoney, getImageProxyUrl, getImageDownloadUrl } from 
 import { FileUploader } from '@/components/ui/file-uploader'
 
 import type { GiftRequestDetails, GiftCategory, WorkflowStatus, TrackingStatus, GiftRequestForm } from '@/types/gift'
-import { assignedVIPPlayers, getVIPPlayerById } from '@/lib/vip-players'
 import { useMemberProfiles, useMemberValidation } from '@/contexts/member-profile-context'
+
+// Workflow Timeline Component
+interface TimelineEvent {
+  WORKFLOW_ID: number
+  GIFT_ID: number
+  FROM_STATUS: string | null
+  TO_STATUS: string
+  UPDATE_DATE: string
+  UPDATE_TIME: string
+  REMARK: string | null
+}
+
+const WorkflowTimeline: React.FC<{ giftId: number }> = ({ giftId }) => {
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchTimeline = async () => {
+      try {
+        setLoading(true)
+        const response = await fetch(`/api/gift-approval/timeline?giftId=${giftId}`)
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch timeline data')
+        }
+
+        const data = await response.json()
+        setTimelineEvents(data.timeline || [])
+      } catch (err) {
+        console.error('Error fetching timeline:', err)
+        setError(err instanceof Error ? err.message : 'Failed to load timeline')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    if (giftId) {
+      fetchTimeline()
+    }
+  }, [giftId])
+
+  const getStatusIcon = (status: string | null | undefined) => {
+    if (!status) return <Circle className="h-4 w-4" />
+
+    switch (status.toLowerCase()) {
+      case 'kam request':
+        return <UserPlus className="h-4 w-4" />
+      case 'manager review':
+        return <CheckCircle className="h-4 w-4" />
+      case 'mktops processing':
+        return <Truck className="h-4 w-4" />
+      case 'kam proof':
+        return <Camera className="h-4 w-4" />
+      case 'salesops audit':
+        return <Shield className="h-4 w-4" />
+      case 'completed':
+        return <CheckCircle2 className="h-4 w-4" />
+      case 'rejected':
+        return <XCircle className="h-4 w-4" />
+      default:
+        return <Circle className="h-4 w-4" />
+    }
+  }
+
+  const getStatusColor = (status: string | null | undefined) => {
+    if (!status) return 'text-gray-600 bg-gray-100'
+
+    switch (status.toLowerCase()) {
+      case 'kam request':
+        return 'text-blue-600 bg-blue-100'
+      case 'manager review':
+        return 'text-yellow-600 bg-yellow-100'
+      case 'mktops processing':
+        return 'text-purple-600 bg-purple-100'
+      case 'kam proof':
+        return 'text-orange-600 bg-orange-100'
+      case 'salesops audit':
+        return 'text-indigo-600 bg-indigo-100'
+      case 'completed':
+        return 'text-green-600 bg-green-100'
+      case 'rejected':
+        return 'text-red-600 bg-red-100'
+      default:
+        return 'text-gray-600 bg-gray-100'
+    }
+  }
+
+  const getStatusIconColor = (status: string | null | undefined) => {
+    if (!status) return 'text-gray-500'
+
+    switch (status.toLowerCase()) {
+      case 'kam request':
+        return 'text-blue-500'
+      case 'manager review':
+        return 'text-yellow-500'
+      case 'mktops processing':
+        return 'text-purple-500'
+      case 'kam proof':
+        return 'text-orange-500'
+      case 'salesops audit':
+        return 'text-indigo-500'
+      case 'completed':
+        return 'text-green-500'
+      case 'rejected':
+        return 'text-red-500'
+      default:
+        return 'text-gray-500'
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="flex items-center gap-2 text-gray-500">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Loading timeline...</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="flex items-center gap-2 text-red-500">
+          <AlertCircle className="h-4 w-4" />
+          <span>Error loading timeline: {error}</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (timelineEvents.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="flex items-center gap-2 text-gray-500">
+          <Clock className="h-4 w-4" />
+          <span>No timeline events found</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {timelineEvents.map((event, index) => (
+        <div key={event.WORKFLOW_ID} className="flex items-start space-x-4">
+          {/* Timeline Line */}
+          <div className="flex flex-col items-center">
+            <div className={`p-2 rounded-full ${getStatusColor(event.TO_STATUS)}`}>
+              {getStatusIcon(event.TO_STATUS)}
+            </div>
+            {index < timelineEvents.length - 1 && (
+              <div className="w-0.5 h-8 bg-slate-200 mt-2"></div>
+            )}
+          </div>
+
+          {/* Timeline Content */}
+          <div className="flex-1 space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h4 className="font-medium text-slate-900">
+                  {event.FROM_STATUS ? `${event.FROM_STATUS} → ${event.TO_STATUS}` : event.TO_STATUS}
+                </h4>
+                <Badge
+                  variant="outline"
+                  className={`text-xs ${getStatusColor(event.TO_STATUS)}`}
+                >
+                  {event.TO_STATUS}
+                </Badge>
+              </div>
+              <div className="flex items-center space-x-2 text-sm text-slate-500">
+                <Calendar className="h-3 w-3" />
+                <span>{event.UPDATE_DATE}</span>
+                <span>•</span>
+                <span>{event.UPDATE_TIME}</span>
+              </div>
+            </div>
+
+            {event.REMARK && (
+              <p className="text-sm text-slate-600 leading-relaxed">
+                {event.REMARK}
+              </p>
+            )}
+
+            {/* Status transition indicator */}
+            {event.FROM_STATUS && (
+              <div className="flex items-center gap-2 mt-2">
+                <div className="flex items-center gap-1 text-xs text-slate-400">
+                  <span className={`w-2 h-2 rounded-full ${getStatusIconColor(event.FROM_STATUS)} bg-current`}></span>
+                  <span>{event.FROM_STATUS}</span>
+                </div>
+                <ArrowRight className="h-3 w-3 text-slate-300" />
+                <div className="flex items-center gap-1 text-xs text-slate-600">
+                  <span className={`w-2 h-2 rounded-full ${getStatusIconColor(event.TO_STATUS)} bg-current`}></span>
+                  <span className="font-medium">{event.TO_STATUS}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 // Helper function to convert date strings to Date objects
 const convertDatesInGifts = (gifts: any[]): GiftRequestDetails[] => {
@@ -60,18 +264,18 @@ const logActivity = async (action: string, userId: string, userName: string, use
         userEmail: userEmail,
         details: details,
       }),
-      })
+    })
   } catch (error) {
     console.error('Error logging activity:', error)
     // Don't throw error to avoid breaking the main workflow
   }
 }
 
-  // API functions
-  const fetchGifts = async (params?: { workflowStatus?: WorkflowStatus; category?: GiftCategory; kamRequestedBy?: string; memberLogin?: string; dateFrom?: string; dateTo?: string; search?: string }) => {
-    try {
+// API functions
+const fetchGifts = async (params?: { workflowStatus?: WorkflowStatus; category?: GiftCategory; kamRequestedBy?: string; memberLogin?: string; dateFrom?: string; dateTo?: string; search?: string }) => {
+  try {
     const searchParams = new URLSearchParams()
-      // Remove pagination parameters - we'll fetch all data
+    // Remove pagination parameters - we'll fetch all data
     if (params?.workflowStatus) searchParams.append('workflowStatus', params.workflowStatus)
     if (params?.category) searchParams.append('category', params.category)
     if (params?.kamRequestedBy) searchParams.append('kamRequestedBy', params.kamRequestedBy)
@@ -83,15 +287,15 @@ const logActivity = async (action: string, userId: string, userName: string, use
     const response = await fetch(`/api/gift-approval?${searchParams.toString()}`)
     const data = await response.json()
 
-      if (!data.success) {
+    if (!data.success) {
       throw new Error(data.message || 'Failed to fetch gifts')
-      }
+    }
 
     return data
-    } catch (error) {
+  } catch (error) {
     console.error('Error fetching gifts:', error)
     throw error
-    }
+  }
 }
 
 const performBulkAction = async (action: string, giftIds: number[], params: any, userId: string) => {
@@ -120,7 +324,10 @@ const performBulkAction = async (action: string, giftIds: number[], params: any,
     })
 
     if (!data.success) {
-      toast.error(data.message || 'Failed to perform bulk action')
+      // Create an error object with the API response details
+      const error = new Error(data.message || 'Failed to perform bulk action')
+        ; (error as any).apiResponse = data
+      throw error
     }
 
     return data
@@ -153,6 +360,7 @@ export default function Gifts() {
   })
   const [activeTab, setActiveTab] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all')
   const [isAnimating, setIsAnimating] = useState(false)
   const [selectedGift, setSelectedGift] = useState<GiftRequestDetails | null>(null)
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
@@ -197,9 +405,9 @@ export default function Gifts() {
   const [auditCheckerName, setAuditCheckerName] = useState('')
 
   const [requestForm, setRequestForm] = useState<GiftRequestForm>({
-    vipId: '',
     memberName: '',
     memberLogin: '',
+    memberId: undefined,
     giftItem: '',
     rewardName: '',
     rewardClubOrder: '',
@@ -287,6 +495,7 @@ export default function Gifts() {
   const handleTabChange = (value: string) => {
     setActiveTab(value)
     setRowSelection({})
+    setDeliveryStatusFilter('all') // Reset delivery status filter when switching tabs
     // Reset to first page when changing tabs
     setPagination((prev) => ({ ...prev, page: 1 }))
   }
@@ -401,14 +610,14 @@ export default function Gifts() {
     setRequestForm((prev) => {
       const newForm = { ...prev, [field]: value }
 
-      // If memberLogin is being changed, validate and auto-populate memberName and vipId
+      // If memberLogin is being changed, validate and auto-populate memberName and memberId
       if (field === 'memberLogin') {
         // Only try to validate if member profiles are loaded
         if (!memberProfilesLoading && memberProfiles.length > 0) {
           const selectedMember = memberProfiles.find((member) => member.memberLogin.toLowerCase() === value.toLowerCase())
           if (selectedMember) {
             newForm.memberName = selectedMember.memberName || ''
-            newForm.vipId = selectedMember.memberId.toString()
+            newForm.memberId = selectedMember.memberId
 
             // Handle currency logic for valueLocal
             if (selectedMember.currency === 'MYR') {
@@ -419,27 +628,13 @@ export default function Gifts() {
               // Don't auto-fill as they may need to enter exchange rate
             }
           } else {
-            // Clear memberName and vipId if member login is invalid or not exact match
+            // Clear memberName and memberId if member login is invalid or not exact match
             newForm.memberName = ''
-            newForm.vipId = ''
+            newForm.memberId = undefined
             newForm.valueLocal = '' // Clear local value too
           }
         }
         // If profiles are still loading, don't modify other fields
-      }
-      
-      // If vipId is being changed, automatically populate memberName and memberLogin
-      if (field === 'vipId' && value) {
-        const selectedMember = memberProfiles.find((member) => member.memberId.toString() === value)
-        if (selectedMember) {
-          newForm.memberName = selectedMember.memberName || ''
-          newForm.memberLogin = selectedMember.memberLogin || ''
-
-          // Handle currency logic for valueLocal
-          if (selectedMember.currency === 'MYR') {
-            newForm.valueLocal = prev.value || ''
-          }
-        }
       }
 
       // If value (MYR) is being changed and member is MYR, update valueLocal automatically
@@ -498,9 +693,9 @@ export default function Gifts() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          vipId: validatedMember.memberId,
           memberName: validatedMember.memberName,
           memberLogin: validatedMember.memberLogin,
+          memberId: validatedMember.memberId,
           giftItem: requestForm.giftItem,
           rewardName: requestForm.rewardName || null,
           rewardClubOrder: requestForm.rewardClubOrder || null,
@@ -524,28 +719,28 @@ export default function Gifts() {
       toast.success('Gift request submitted successfully!', {
         description: `Gift request has been created and moved to Manager Review.`,
       })
-      
+
       // console.log("Checking data", data)
       // Log activity using the returned gift ID
       if (data.data?.giftId) {
         await logActivity('CREATE_REQUEST', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
-            giftId: data.data.giftId,
-            fromStatus: '',
-            toStatus: 'KAM_Request',
-            giftItem: requestForm.giftItem,
-            memberName: requestForm.memberName,
-            memberLogin: requestForm.memberLogin,
-            costMyr: parseFloat(requestForm.value),
-            category: requestForm.category,
+          giftId: data.data.giftId,
+          fromStatus: '',
+          toStatus: 'KAM_Request',
+          giftItem: requestForm.giftItem,
+          memberName: requestForm.memberName,
+          memberLogin: requestForm.memberLogin,
+          costMyr: parseFloat(requestForm.value),
+          category: requestForm.category,
           remark: `Gift request created: ${requestForm.giftItem} for ${requestForm.memberName}`,
         })
       }
 
       // Reset form
       setRequestForm({
-        vipId: '',
         memberName: '',
         memberLogin: '',
+        memberId: undefined,
         giftItem: '',
         rewardName: '',
         rewardClubOrder: '',
@@ -558,7 +753,7 @@ export default function Gifts() {
 
       // Close modal
       setIsRequestModalOpen(false)
-      
+
       await refreshGiftsData()
     } catch (error) {
       console.error('Error creating gift request:', error)
@@ -615,8 +810,8 @@ export default function Gifts() {
       await logActivity('BULK_APPROVE_TO_PROCESSING', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
         giftIds: selectedGiftIds,
         count: selectedGiftIds.length,
-              fromStatus: 'Manager_Review',
-              toStatus: 'MKTOps_Processing',
+        fromStatus: 'Manager_Review',
+        toStatus: 'MKTOps_Processing',
         tab: activeTab,
         remark: `Bulk approved ${selectedGiftIds.length} gifts to processing stage`,
       })
@@ -662,7 +857,7 @@ export default function Gifts() {
       await logActivity('BULK_REJECT_WITH_REASON', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
         giftIds: selectedGiftIds,
         count: selectedGiftIds.length,
-              fromStatus: 'Manager_Review',
+        fromStatus: 'Manager_Review',
         toStatus: 'Rejected',
         tab: activeTab,
         reason: reason,
@@ -756,6 +951,7 @@ export default function Gifts() {
         user?.id || 'unknown'
       )
 
+      // Show success message only if the API call was successful
       toast.success(`Successfully moved ${selectedGiftIds.length} gift(s) to KAM Proof stage`)
 
       // Log activity for bulk proceed to KAM proof
@@ -776,6 +972,7 @@ export default function Gifts() {
         errorMessage: error.message,
         errorType: typeof error,
         hasValidationError: error.message?.includes('do not meet requirements'),
+        apiResponse: error.apiResponse,
       })
 
       // Show detailed validation errors if available
@@ -1078,15 +1275,15 @@ export default function Gifts() {
       }
 
       toast.success('Gift approved successfully')
-      
+
       // Log activity
       await logActivity('APPROVE', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
-          giftId: giftId,
-          fromStatus: 'Manager_Review',
-          toStatus: 'MKTOps_Processing',
+        giftId: giftId,
+        fromStatus: 'Manager_Review',
+        toStatus: 'MKTOps_Processing',
         remark: 'Gift approved by manager',
       })
-      
+
       await refreshGiftsData()
     } catch (error) {
       toast.error('Failed to approve gift')
@@ -1127,12 +1324,12 @@ export default function Gifts() {
       }
 
       toast.success('Gift rejected successfully')
-      
+
       // Log activity
       await logActivity('REJECT', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
-          giftId: giftId,
-          fromStatus: 'Manager_Review',
-          toStatus: 'Rejected',
+        giftId: giftId,
+        fromStatus: 'Manager_Review',
+        toStatus: 'Rejected',
         remark: `Gift rejected: ${reason}`,
       })
 
@@ -1213,16 +1410,16 @@ export default function Gifts() {
       }
 
       toast.success('MKTOps information updated successfully')
-      
+
       // Log activity
       await logActivity('UPDATE_MKTOPS', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
-          giftId: giftId,
-          dispatcher: dispatcher,
-          trackingCode: trackingCode,
-          trackingStatus: trackingStatus,
+        giftId: giftId,
+        dispatcher: dispatcher,
+        trackingCode: trackingCode,
+        trackingStatus: trackingStatus,
         remark: `MKTOps info updated: ${dispatcher}, ${trackingCode}, ${trackingStatus}`,
       })
-      
+
       setIsMKTOpsModalOpen(false)
       await refreshGiftsData()
     } catch (error) {
@@ -1298,20 +1495,20 @@ export default function Gifts() {
       // Check if this was a resubmission (gift had audit remark)
       const currentGift = gifts.find((g) => g.giftId === giftId)
       const wasResubmission = currentGift?.auditRemark
-      
+
       const successMessage = wasResubmission ? 'KAM proof resubmitted successfully - audit issue addressed' : 'KAM proof submitted successfully'
-      
+
       toast.success(successMessage)
-      
+
       // Log activity
       await logActivity('SUBMIT_KAM_PROOF', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
-          giftId: giftId,
-          fromStatus: 'KAM_Proof',
-          toStatus: 'SalesOps_Audit',
-          giftFeedback: giftFeedback,
+        giftId: giftId,
+        fromStatus: 'KAM_Proof',
+        toStatus: 'SalesOps_Audit',
+        giftFeedback: giftFeedback,
         remark: `KAM proof submitted${giftFeedback ? ': ' + giftFeedback : ''}`,
       })
-      
+
       setIsKAMProofModalOpen(false)
       await refreshGiftsData()
     } catch (error) {
@@ -1431,18 +1628,29 @@ export default function Gifts() {
       }
 
       toast.success('Gift moved to KAM Proof step successfully')
-      
+
       // Log activity
       await logActivity('PROCEED_TO_KAM_PROOF', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
-          giftId: giftId,
-          fromStatus: 'MKTOps_Processing',
-          toStatus: 'KAM_Proof',
+        giftId: giftId,
+        fromStatus: 'MKTOps_Processing',
+        toStatus: 'KAM_Proof',
         remark: 'Gift moved to KAM Proof stage',
       })
-      
+
       await refreshGiftsData()
-    } catch (error) {
-      toast.error('Failed to proceed to next step')
+    } catch (error: any) {
+      console.error('Error proceeding to next step:', error)
+
+      // Show the specific validation error message from the API
+      if ((error.message && error.message.includes('Missing required fields')) || error.message.includes('Tracking Status must be "Delivered"')) {
+        toast.error('Validation Failed', {
+          description: error.message,
+        })
+      } else {
+        toast.error('Failed to proceed to next step', {
+          description: error.message || 'Unknown error occurred',
+        })
+      }
     } finally {
       setIsProceedingToNext(null)
     }
@@ -1481,19 +1689,19 @@ export default function Gifts() {
       }
 
       const successMessage = action === 'complete' ? 'Gift marked as completed successfully' : 'Gift marked as issue and returned to KAM Proof'
-      
+
       toast.success(successMessage)
-      
+
       // Log activity
       await logActivity(action === 'complete' ? 'AUDIT_COMPLETE' : 'AUDIT_ISSUE', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
-          giftId: giftId,
-          fromStatus: 'SalesOps_Audit',
-          toStatus: action === 'complete' ? 'Completed' : 'KAM_Proof',
-          auditRemark: auditRemark,
-          checkerName: checkerName,
+        giftId: giftId,
+        fromStatus: 'SalesOps_Audit',
+        toStatus: action === 'complete' ? 'Completed' : 'KAM_Proof',
+        auditRemark: auditRemark,
+        checkerName: checkerName,
         remark: `Audit ${action}: ${auditRemark}`,
       })
-      
+
       setIsAuditModalOpen(false)
       await refreshGiftsData()
     } catch (error) {
@@ -1518,7 +1726,7 @@ export default function Gifts() {
     }
 
     const selectedGifts = gifts.filter((_, index) => selectedRows.includes(index.toString()))
-    
+
     // Format data according to the specification
     const formattedData = selectedGifts.map((gift) => ({
       Date: gift.createdDate ? gift.createdDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '',
@@ -1543,18 +1751,18 @@ export default function Gifts() {
       'Checked Date': gift.auditDate ? gift.auditDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'long' }) : '',
       'Audit Remark': gift.auditRemark || '',
     }))
-    
+
     exportToCSV(formattedData, `bulk_gifts_${new Date().toISOString().split('T')[0]}`)
     toast.success(`Exported ${selectedRows.length} gifts to CSV`)
-      
-      // Log export activity
+
+    // Log export activity
     await logActivity('BULK_EXPORT', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
-          exportedCount: selectedRows.length,
-          exportType: 'csv',
-          activeTab: activeTab,
+      exportedCount: selectedRows.length,
+      exportType: 'csv',
+      activeTab: activeTab,
       remark: `Exported ${selectedRows.length} gifts to CSV`,
     })
-        }
+  }
 
   // Get filtered gifts based on active tab - now handles client-side filtering
   const getFilteredGifts = (status: string) => {
@@ -1568,6 +1776,15 @@ export default function Gifts() {
         filtered = gifts.filter((gift) => gift.workflowStatus === 'Rejected')
       } else if (status === 'processing') {
         filtered = gifts.filter((gift) => gift.workflowStatus === 'MKTOps_Processing')
+
+        // Apply delivery status filter for processing tab
+        if (deliveryStatusFilter !== 'all') {
+          if (deliveryStatusFilter === 'no-tracking') {
+            filtered = filtered.filter((gift) => !gift.dispatcher || !gift.trackingCode)
+          } else {
+            filtered = filtered.filter((gift) => gift.trackingStatus === deliveryStatusFilter)
+          }
+        }
       } else if (status === 'kam-proof') {
         filtered = gifts.filter((gift) => gift.workflowStatus === 'KAM_Proof')
       } else if (status === 'audit') {
@@ -1743,6 +1960,87 @@ export default function Gifts() {
       },
     },
     {
+      accessorKey: 'trackingStatus',
+      header: 'Delivery Status',
+      cell: ({ row }) => {
+        const gift = row.original
+        const trackingStatus = gift.trackingStatus
+        const dispatcher = gift.dispatcher
+        const trackingCode = gift.trackingCode
+
+        // Only show delivery status for gifts that have tracking info
+        if (!dispatcher || !trackingCode) {
+          return (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded-full border border-gray-200">
+                <Clock className="h-3 w-3" />
+                <span>No Tracking</span>
+              </div>
+            </div>
+          )
+        }
+
+        // Define status configurations
+        const statusConfig = {
+          Pending: {
+            icon: Clock,
+            color: 'text-yellow-600',
+            bgColor: 'bg-yellow-50',
+            borderColor: 'border-yellow-200',
+            label: 'Pending',
+          },
+          'In Transit': {
+            icon: Truck,
+            color: 'text-blue-600',
+            bgColor: 'bg-blue-50',
+            borderColor: 'border-blue-200',
+            label: 'In Transit',
+          },
+          Delivered: {
+            icon: CheckCircle,
+            color: 'text-green-600',
+            bgColor: 'bg-green-50',
+            borderColor: 'border-green-200',
+            label: 'Delivered',
+          },
+          Failed: {
+            icon: XCircle,
+            color: 'text-red-600',
+            bgColor: 'bg-red-50',
+            borderColor: 'border-red-200',
+            label: 'Failed',
+          },
+          Returned: {
+            icon: ArrowRight,
+            color: 'text-orange-600',
+            bgColor: 'bg-orange-50',
+            borderColor: 'border-orange-200',
+            label: 'Returned',
+          },
+        }
+
+        const config = statusConfig[trackingStatus as keyof typeof statusConfig] || statusConfig['Pending']
+        const IconComponent = config.icon
+
+        return (
+          <div className="flex items-center gap-2" title={`${dispatcher} - ${trackingCode}`}>
+            <div className={`flex items-center gap-1 text-xs ${config.color} ${config.bgColor} px-2 py-1 rounded-full border ${config.borderColor}`}>
+              <IconComponent className="h-3 w-3" />
+              <span>{config.label}</span>
+            </div>
+            {trackingStatus === 'Delivered' && activeTab === 'processing' && gift.uploadedBo && (
+              <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-200">
+                <CheckCircle className="h-3 w-3" />
+                <span>Ready for KAM</span>
+              </div>
+            )}
+            {/* Show dispatcher info for quick reference */}
+            {/* <div className="text-xs text-gray-500 hidden lg:block">{dispatcher}</div> */}
+          </div>
+        )
+      },
+    },
+    {
       accessorKey: 'createdDate',
       header: 'Request Date',
       cell: ({ row }) => {
@@ -1753,7 +2051,12 @@ export default function Gifts() {
     {
       accessorKey: 'kamRequestedBy',
       header: 'KAM',
-      cell: ({ row }) => <div className="text-sm">{row.getValue('kamRequestedBy') || 'N/A'}</div>,
+      cell: ({ row }) => (
+        <div>
+          <div className="font-medium">{row.getValue('kamRequestedBy') || 'N/A'}</div>
+          <div className="text-sm text-slate-500">{row.original.kamEmail || 'N/A'}</div>
+        </div>
+      ),
     },
     {
       id: 'actions',
@@ -1831,7 +2134,7 @@ export default function Gifts() {
                         <CardHeader>
                           <CardTitle className="text-lg text-red-800 flex items-center gap-2">
                             <XCircle className="h-5 w-5" />
-                            Rejection Reason
+                            Rejection Reason <span className="text-xs text-red-600">Has Reason</span>
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
@@ -1876,6 +2179,19 @@ export default function Gifts() {
                         </CardContent>
                       </Card>
                     )}
+
+                    {/* Workflow Timeline */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Clock className="h-5 w-5" />
+                          Workflow Timeline
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <WorkflowTimeline giftId={gift.giftId} />
+                      </CardContent>
+                    </Card>
 
                     {/* Additional Details */}
                     {(gift.dispatcher || gift.trackingCode || gift.kamProof || gift.auditRemark) && (
@@ -2345,7 +2661,7 @@ export default function Gifts() {
                                           ...prev,
                                           memberLogin: member.memberLogin,
                                           memberName: member.memberName || '',
-                                          vipId: member.memberId.toString(),
+                                          memberId: member.memberId,
                                         }))
                                         setShowMemberDropdown(false)
                                       }}
@@ -2429,24 +2745,24 @@ export default function Gifts() {
                           </div>
                           <p className="text-xs text-gray-500">{!memberProfilesLoading && requestForm.memberLogin && validateMember(requestForm.memberLogin) && getMemberDetails(requestForm.memberLogin)?.currency === 'MYR' ? 'Auto-filled for MYR players (same as MYR value)' : "Optional: Enter amount in member's local currency if different from MYR"}</p>
                         </div>
-                        </div>
+                      </div>
 
-                        <div className="space-y-2">
-                          <Label htmlFor="category" className="text-sm font-medium">
-                            Category <span className="text-red-500">*</span>
-                          </Label>
+                      <div className="space-y-2">
+                        <Label htmlFor="category" className="text-sm font-medium">
+                          Category <span className="text-red-500">*</span>
+                        </Label>
                         <Select value={requestForm.category} onValueChange={(value) => handleFormChange('category', value)}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select category" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Birthday">Birthday</SelectItem>
-                              <SelectItem value="Retention">Retention</SelectItem>
-                              <SelectItem value="High Roller">High Roller</SelectItem>
-                              <SelectItem value="Promotion">Promotion</SelectItem>
-                              <SelectItem value="Other">Other</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Birthday">Birthday</SelectItem>
+                            <SelectItem value="Retention">Retention</SelectItem>
+                            <SelectItem value="High Roller">High Roller</SelectItem>
+                            <SelectItem value="Promotion">Promotion</SelectItem>
+                            <SelectItem value="Other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
 
                       <div className="space-y-2">
@@ -2600,19 +2916,19 @@ export default function Gifts() {
                       }
                       onUploadComplete={async (data) => {
                         console.log('Bulk upload completed:', data)
-                        
+
                         // Log activity for each created gift ID
                         if (data?.createdGiftIds && Array.isArray(data.createdGiftIds)) {
                           for (const giftId of data.createdGiftIds) {
                             await logActivity('BULK_IMPORT', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
-              giftId: giftId,
-              fromStatus: '',
-              toStatus: 'Manager_Review',
+                              giftId: giftId,
+                              fromStatus: '',
+                              toStatus: 'Manager_Review',
                               remark: `Bulk import: Gift created via CSV upload`,
                             })
                           }
                         }
-                        
+
                         refreshGiftsData()
                       }}
                       user={{
@@ -2732,7 +3048,7 @@ export default function Gifts() {
                                     <DialogTrigger asChild>
                                       <Button variant="outline">Cancel</Button>
                                     </DialogTrigger>
-                            <Button 
+                                    <Button
                                       onClick={() => {
                                         if (rejectReason.trim()) {
                                           handleBulkRejectWithReason(rejectReason.trim())
@@ -2741,19 +3057,19 @@ export default function Gifts() {
                                       }}
                                       disabled={!rejectReason.trim() || isBulkActioning}
                                       className="bg-red-600 hover:bg-red-700"
-                            >
-                              {isBulkActioning ? (
+                                    >
+                                      {isBulkActioning ? (
                                         <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                           Rejecting...
                                         </>
-                              ) : (
+                                      ) : (
                                         <>
-                                <XCircle className="h-4 w-4 mr-2" />
+                                          <XCircle className="h-4 w-4 mr-2" />
                                           Reject {Object.keys(rowSelection).length} Gift(s)
                                         </>
-                              )}
-                            </Button>
+                                      )}
+                                    </Button>
                                   </div>
                                 </div>
                               </DialogContent>
@@ -2765,6 +3081,31 @@ export default function Gifts() {
                       {/* PROCESSING TAB ACTIONS */}
                       {activeTab === 'processing' && (
                         <>
+                          {/* Delivery Status Filter for Processing Tab */}
+                          <div className="flex items-center space-x-2 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                            <Label htmlFor="deliveryStatusFilter" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                              Filter by Delivery Status:
+                            </Label>
+                            <Select value={deliveryStatusFilter} onValueChange={setDeliveryStatusFilter}>
+                              <SelectTrigger className="w-48">
+                                <SelectValue placeholder="All delivery statuses" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All Delivery Statuses</SelectItem>
+                                <SelectItem value="no-tracking">No Tracking Info</SelectItem>
+                                <SelectItem value="Pending">Pending</SelectItem>
+                                <SelectItem value="In Transit">In Transit</SelectItem>
+                                <SelectItem value="Delivered">Delivered</SelectItem>
+                                <SelectItem value="Failed">Failed</SelectItem>
+                                {/* <SelectItem value="Returned">Returned</SelectItem> */}
+                              </SelectContent>
+                            </Select>
+                            {deliveryStatusFilter !== 'all' && (
+                              <Button variant="outline" size="sm" onClick={() => setDeliveryStatusFilter('all')} className="text-xs">
+                                Clear Filter
+                              </Button>
+                            )}
+                          </div>
                           <RoleBasedActionPermission
                             allowedRoles={['MKTOPS', 'MANAGER', 'ADMIN']}
                             permission="EDIT"
@@ -2872,9 +3213,9 @@ export default function Gifts() {
                             <Dialog>
                               <DialogTrigger asChild>
                                 <Button size="sm" variant="outline" className="bg-orange-600 text-white hover:bg-orange-700" disabled={isBulkActioning} title="Add receiver feedback to selected gifts">
-                              <FileText className="h-4 w-4 mr-2" />
+                                  <FileText className="h-4 w-4 mr-2" />
                                   Fill Feedback ({Object.keys(rowSelection).length})
-                            </Button>
+                                </Button>
                               </DialogTrigger>
                               <DialogContent className="max-w-md">
                                 <DialogHeader>
@@ -2914,8 +3255,8 @@ export default function Gifts() {
                                         <>
                                           <FileText className="h-4 w-4 mr-2" />
                                           Save Feedback Only
-                        </>
-                      )}
+                                        </>
+                                      )}
                                     </Button>
                                     <Button
                                       onClick={() => {
@@ -3107,21 +3448,21 @@ export default function Gifts() {
                       )}
 
                       {/* EXPORT ACTION - Available for all tabs */}
-                        <ManagerAndAboveActionWithPermission
-                          module="gift-approval"
-                          permission="EXPORT"
-                          disabledFallback={
-                            <Button size="sm" variant="outline" disabled className="bg-gray-400 text-white opacity-50 cursor-not-allowed" title="Manager role and EXPORT permission required">
-                              <FileText className="h-4 w-4 mr-2" />
-                            Export ({Object.keys(rowSelection).length})
-                            </Button>
-                          }
-                        >
-                          <Button size="sm" variant="outline" onClick={handleBulkExport} className="bg-purple-600 text-white hover:bg-purple-700">
+                      <ManagerAndAboveActionWithPermission
+                        module="gift-approval"
+                        permission="EXPORT"
+                        disabledFallback={
+                          <Button size="sm" variant="outline" disabled className="bg-gray-400 text-white opacity-50 cursor-not-allowed" title="Manager role and EXPORT permission required">
                             <FileText className="h-4 w-4 mr-2" />
-                          Export ({Object.keys(rowSelection).length})
+                            Export ({Object.keys(rowSelection).length})
                           </Button>
-                        </ManagerAndAboveActionWithPermission>
+                        }
+                      >
+                        <Button size="sm" variant="outline" onClick={handleBulkExport} className="bg-purple-600 text-white hover:bg-purple-700">
+                          <FileText className="h-4 w-4 mr-2" />
+                          Export ({Object.keys(rowSelection).length})
+                        </Button>
+                      </ManagerAndAboveActionWithPermission>
                     </div>
                   </div>
                 </div>
@@ -3193,12 +3534,12 @@ export default function Gifts() {
                 {!apiLoading && (
                   <div className="flex items-center justify-between mt-4">
                     <div className="flex items-center space-x-4">
-                    <div className="text-sm text-gray-600">
+                      <div className="text-sm text-gray-600">
                         Showing {(pagination.page - 1) * pagination.limit + 1} to {Math.min(pagination.page * pagination.limit, getFilteredGifts(activeTab).length)} of {getFilteredGifts(activeTab).length} results
-                    </div>
+                      </div>
 
                       {/* Page Size Dropdown */}
-                    <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2">
                         <Label htmlFor="pageSize" className="text-sm text-gray-600">
                           Rows per page:
                         </Label>
@@ -3222,15 +3563,15 @@ export default function Gifts() {
                     {pagination.totalPages > 1 && (
                       <div className="flex items-center space-x-2">
                         <Button variant="outline" size="sm" onClick={() => handlePageChange(pagination.page - 1)} disabled={pagination.page <= 1}>
-                        Previous
-                      </Button>
-                      <span className="text-sm">
-                        Page {pagination.page} of {pagination.totalPages}
-                      </span>
+                          Previous
+                        </Button>
+                        <span className="text-sm">
+                          Page {pagination.page} of {pagination.totalPages}
+                        </span>
                         <Button variant="outline" size="sm" onClick={() => handlePageChange(pagination.page + 1)} disabled={pagination.page >= pagination.totalPages}>
-                        Next
-                      </Button>
-                    </div>
+                          Next
+                        </Button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -3256,7 +3597,7 @@ export default function Gifts() {
               <Button variant="outline" onClick={() => setIsRejectModalOpen(false)}>
                 Cancel
               </Button>
-              <Button 
+              <Button
                 onClick={() => {
                   if (rejectingGiftId) {
                     // Check if the gift is in processing tab or pending tab
@@ -3267,8 +3608,8 @@ export default function Gifts() {
                       handleRejectGift(rejectingGiftId, rejectReason)
                     }
                   }
-                }} 
-                disabled={!rejectReason.trim() || isRejectingGift === rejectingGiftId} 
+                }}
+                disabled={!rejectReason.trim() || isRejectingGift === rejectingGiftId}
                 className="bg-red-600 hover:bg-red-700"
               >
                 {isRejectingGift === rejectingGiftId ? (
@@ -3321,7 +3662,7 @@ export default function Gifts() {
             </div>
             <div>
               <Label htmlFor="mktOpsProof">MKTOps Proof (Image)</Label>
-              
+
               {/* Show existing image if available */}
               {mkTOpsForm.existingMktProofUrl && !mkTOpsForm.mktOpsProof && (
                 <div className="mb-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
@@ -3349,7 +3690,7 @@ export default function Gifts() {
                   <p className="text-xs text-gray-500 mt-1">Upload a new image to replace this one</p>
                 </div>
               )}
-              
+
               <FileUploader
                 acceptedTypes="image/*"
                 maxSize={20 * 1024 * 1024} // 20MB
@@ -3388,7 +3729,7 @@ export default function Gifts() {
           <div className="space-y-4">
             <div>
               <Label htmlFor="kamProof">KAM Proof (Image)</Label>
-              
+
               {/* Show existing image if available */}
               {kamProofForm.existingKamProofUrl && !kamProofForm.kamProof && (
                 <div className="mb-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
@@ -3416,7 +3757,7 @@ export default function Gifts() {
                   <p className="text-xs text-gray-500 mt-1">Upload a new image to replace this one</p>
                 </div>
               )}
-              
+
               <FileUploader
                 acceptedTypes="image/*"
                 maxSize={20 * 1024 * 1024} // 20MB
@@ -3427,7 +3768,9 @@ export default function Gifts() {
               {kamProofForm.kamProof && typeof kamProofForm.kamProof === 'object' && <div className="mt-2 text-sm text-green-600">✓ {kamProofForm.kamProof.name} selected</div>}
             </div>
             <div>
-              <Label htmlFor="giftFeedback">Gift Feedback</Label>
+              <Label htmlFor="giftFeedback">
+                Gift Feedback <span className="text-red-500">*</span>
+              </Label>
               <Textarea id="giftFeedback" value={kamProofForm.giftFeedback} onChange={(e) => setKAMProofForm((prev) => ({ ...prev, giftFeedback: e.target.value }))} placeholder="Enter feedback about the gift delivery..." rows={3} />
             </div>
             <div className="flex justify-end space-x-2">
@@ -3465,12 +3808,12 @@ export default function Gifts() {
             <div className="bg-gray-50 p-4 rounded-lg">
               <h4 className="font-medium text-gray-900 mb-3">Gift Request Summary</h4>
               <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
+                <div>
                   <span className="text-gray-600">Player:</span> {selectedGift?.fullName} ({selectedGift?.memberLogin})
-            </div>
-            <div>
+                </div>
+                <div>
                   <span className="text-gray-600">Gift:</span> {selectedGift?.giftItem}
-            </div>
+                </div>
                 <div>
                   <span className="text-gray-600">Value:</span> {selectedGift?.costMyr ? formatMoney(selectedGift.costMyr, { currency: selectedGift.currency || 'MYR' }) : 'N/A'}
                 </div>
@@ -3562,29 +3905,29 @@ export default function Gifts() {
               </div>
 
               <div className="flex justify-end space-x-2 pt-4">
-              <Button variant="outline" onClick={() => setIsAuditModalOpen(false)}>
-                Cancel
-              </Button>
+                <Button variant="outline" onClick={() => setIsAuditModalOpen(false)}>
+                  Cancel
+                </Button>
                 <Button onClick={() => auditGiftId && handleSubmitAudit(auditGiftId, auditRemark, auditCheckerName, 'mark-issue')} disabled={!auditRemark.trim() || isSubmittingAudit === auditGiftId} className="bg-orange-600 hover:bg-orange-700">
-                {isSubmittingAudit === auditGiftId ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
+                  {isSubmittingAudit === auditGiftId ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
                     'Mark as Issue'
-                )}
-              </Button>
+                  )}
+                </Button>
                 <Button onClick={() => auditGiftId && handleSubmitAudit(auditGiftId, auditRemark, auditCheckerName, 'complete')} disabled={!auditRemark.trim() || isSubmittingAudit === auditGiftId} className="bg-indigo-600 hover:bg-indigo-700">
-                {isSubmittingAudit === auditGiftId ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
+                  {isSubmittingAudit === auditGiftId ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
                     'Mark as Completed'
-                )}
-              </Button>
+                  )}
+                </Button>
               </div>
             </div>
           </div>

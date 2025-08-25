@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { useFirebaseAuth } from '@/contexts/firebase-auth-context'
+import FirebaseLoginForm from '@/components/auth/firebase-login-form'
 import Sidebar from '@/components/layout/sidebar'
 import { Card, CardContent } from '@/components/ui/card'
 import { Users, Target, Gift, Settings, TrendingUp, BarChart3, Sparkles } from 'lucide-react'
@@ -43,31 +42,10 @@ const moduleCards = [
 ]
 
 export default function HomePage() {
-  const { user, loading } = useFirebaseAuth()
-  const router = useRouter()
+  const { user } = useFirebaseAuth()
 
-  useEffect(() => {
-    // If not loading and no user, redirect to login
-    if (!loading && !user) {
-      router.push('/login')
-    }
-  }, [user, loading, router])
-
-  // Show loading while checking authentication status
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // If no user, don't render anything (will redirect)
   if (!user) {
-    return null
+    return <FirebaseLoginForm />
   }
 
   return (

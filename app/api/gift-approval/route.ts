@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
 import { GiftRequestDetails, GiftFilters, WorkflowStatus, GiftCategory } from '@/types/gift'
+import { debugSQL } from '@/lib/utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -75,7 +76,6 @@ export async function GET(request: NextRequest) {
       WHERE ${whereClause}
     `
 
-    
     const countResult = await executeQuery(countSQL, params)
     const total = (countResult as any[])[0]?.total || 0
 
@@ -88,6 +88,7 @@ export async function GET(request: NextRequest) {
         KAM_EMAIL,
         CREATED_DATE,
         WORKFLOW_STATUS,
+        MEMBER_ID,
         MEMBER_LOGIN,
         FULL_NAME,
         PHONE,
@@ -124,6 +125,7 @@ export async function GET(request: NextRequest) {
       WHERE ${whereClause}
       ORDER BY CREATED_DATE DESC, GIFT_ID DESC
     `
+    debugSQL(dataSQL, params)
 
     const result = await executeQuery(dataSQL, params)
 
@@ -133,6 +135,7 @@ export async function GET(request: NextRequest) {
       merchantName: row.MERCHANT_NAME,
       kamRequestedBy: row.KAM_NAME,
       kamEmail: row.KAM_EMAIL,
+      memberId: row.MEMBER_ID,
       createdDate: row.CREATED_DATE ? new Date(row.CREATED_DATE) : null,
       workflowStatus: row.WORKFLOW_STATUS,
       memberLogin: row.MEMBER_LOGIN,

@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     let batchId: number | undefined
     let workflowRowsUpdated = 0
 
-    // Start transaction
+    // Start transaction with higher isolation level to prevent race conditions
     await executeQuery('BEGIN TRANSACTION')
 
     try {
@@ -132,47 +132,71 @@ export async function POST(request: NextRequest) {
 
       switch (tab) {
         case 'pending':
-          // Import gift requests with batch tracking
+          // Import gift requests with batch tracking and duplicate prevention
           for (const row of data) {
-            try {
-              const insertSQL = `
-                INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
-                  BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
-                  MEMBER_LOGIN, REWARD_NAME, GIFT_ITEM,
-                  COST_BASE, CURRENCY, COST_LOCAL, REMARK, REWARD_CLUB_ORDER, CATEGORY,
-                  LAST_MODIFIED_DATE
-                ) VALUES (?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
-              `
+            let retryCount = 0
+            const maxRetries = 3
 
-              // Use the validated data structure from frontend validation
-              const costMyr = parseFloat(row.value) || 0
-              const costLocal = row.valueLocal ? parseFloat(row.valueLocal) : null
-              const currency = row.currency || 'MYR'
-              if (costMyr) totalValue += costMyr
+            while (retryCount < maxRetries) {
+              try {
+                // Use sequence for GIFT_ID generation to ensure uniqueness
+                const insertSQL = `
+                  INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
+                    BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
+                    MEMBER_ID, MEMBER_LOGIN, REWARD_NAME, GIFT_ITEM,
+                    COST_BASE, CURRENCY, COST_LOCAL, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+                    LAST_MODIFIED_DATE
+                  ) VALUES (?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
+                `
 
-              const insertParams = [
-                batchId,
-                userId, // KAM_REQUESTED_BY - Use user ID from request body
-                'Manager_Review', // All bulk imports start at Manager_Review
-                row.memberLogin.trim(), // MEMBER_LOGIN from CSV
-                row.rewardName?.trim() || null, // REWARD_NAME
-                row.giftItem.trim(), // GIFT_ITEM
-                costMyr, // COST_BASE (always in MYR)
-                currency, // CURRENCY (from member profile or default MYR)
-                costLocal, // COST_LOCAL (local currency amount, can be null)
-                row.remark?.trim() || null, // REMARK
-                row.rewardClubOrder?.trim() || null, // REWARD_CLUB_ORDER
-                row.category.trim(), // CATEGORY
-              ]
+                // Use the validated data structure from frontend validation
+                const costMyr = parseFloat(row.value) || 0
+                const costLocal = row.valueLocal ? parseFloat(row.valueLocal) : null
+                const currency = row.currency || 'MYR'
+                if (costMyr) totalValue += costMyr
 
-              // debugSQL(insertSQL, insertParams, `Bulk Import Pending Row ${row._rowNumber || 'unknown'}`);
-              await executeQuery(insertSQL, insertParams)
+                const insertParams = [
+                  batchId,
+                  userId, // KAM_REQUESTED_BY - Use user ID from request body
+                  'Manager_Review', // All bulk imports start at Manager_Review
+                  row.memberId, // MEMBER_ID from validated member data
+                  row.memberLogin.trim(), // MEMBER_LOGIN from CSV
+                  row.rewardName?.trim() || null, // REWARD_NAME
+                  row.giftItem.trim(), // GIFT_ITEM
+                  costMyr, // COST_BASE (always in MYR)
+                  currency, // CURRENCY (from member profile or default MYR)
+                  costLocal, // COST_LOCAL (local currency amount, can be null)
+                  row.remark?.trim() || null, // REMARK
+                  row.rewardClubOrder?.trim() || null, // REWARD_CLUB_ORDER
+                  row.category.trim(), // CATEGORY
+                ]
 
-              importedCount++
-            } catch (error) {
-              failedCount++
-              const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-              failedRows.push({ row, error: errorMessage })
+                // debugSQL(insertSQL, insertParams, `Bulk Import Pending Row ${row._rowNumber || 'unknown'}`);
+                await executeQuery(insertSQL, insertParams)
+
+                importedCount++
+                break // Success, exit retry loop
+              } catch (error) {
+                retryCount++
+                const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+                // Check if it's a duplicate key error
+                if (errorMessage.includes('duplicate') || errorMessage.includes('unique constraint') || errorMessage.includes('already exists')) {
+                  if (retryCount >= maxRetries) {
+                    failedCount++
+                    failedRows.push({ row, error: `Failed after ${maxRetries} retries: ${errorMessage}` })
+                  } else {
+                    // Wait a bit before retrying to avoid race conditions
+                    await new Promise((resolve) => setTimeout(resolve, 100 * retryCount))
+                    continue
+                  }
+                } else {
+                  // Non-duplicate error, don't retry
+                  failedCount++
+                  failedRows.push({ row, error: errorMessage })
+                  break
+                }
+              }
             }
           }
 

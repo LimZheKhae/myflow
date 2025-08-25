@@ -2,6 +2,7 @@ import type React from 'react'
 import { Inter } from 'next/font/google'
 import { FirebaseAuthProvider } from '@/contexts/firebase-auth-context'
 import { MemberProfileProvider } from '@/contexts/member-profile-context'
+import { NotificationProvider } from '@/contexts/NotificationContext'
 import { Toaster } from 'sonner'
 import './globals.css'
 
@@ -12,7 +13,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={inter.className}>
         <FirebaseAuthProvider>
-          <MemberProfileProvider>{children}</MemberProfileProvider>
+          <MemberProfileProvider>
+            <NotificationProvider>{children}</NotificationProvider>
+          </MemberProfileProvider>
         </FirebaseAuthProvider>
         <Toaster richColors position="top-right" />
       </body>

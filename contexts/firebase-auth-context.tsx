@@ -2,8 +2,8 @@
 
 import type React from 'react'
 import { createContext, useContext, useState, useEffect } from 'react'
-import { User, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth'
-import { auth } from '@/lib/firebase'
+import { User } from 'firebase/auth'
+import { FirebaseAuthService } from '@/lib/firebase-auth'
 import type { AuthContext, Permission, MemberType } from '@/types/auth'
 import type { FirebaseUser } from '@/types/firebase'
 
@@ -32,26 +32,6 @@ interface FirebaseAuthContext {
 
 const FirebaseAuthContextProvider = createContext<FirebaseAuthContext | null>(null)
 
-// Helper function to set cookie
-const setCookie = (name: string, value: string, days: number = 7) => {
-  const expires = new Date()
-  expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000)
-  document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Strict`
-}
-
-// Helper function to get cookie
-const getCookie = (name: string): string | null => {
-  const value = `; ${document.cookie}`
-  const parts = value.split(`; ${name}=`)
-  if (parts.length === 2) return parts.pop()?.split(';').shift() || null
-  return null
-}
-
-// Helper function to delete cookie
-const deleteCookie = (name: string) => {
-  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`
-}
-
 export function FirebaseAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<FirebaseUser | null>(null)
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null)
@@ -59,98 +39,45 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    console.log('Setting up direct Firebase auth state listener...')
-    let mounted = true
-
-    // Use direct Firebase auth instead of FirebaseAuthService
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
-      if (!mounted) return
-
-      console.log('Direct auth state changed:', { firebaseUser: !!firebaseUser })
-
+    // Set up auth state listener
+    const unsubscribe = FirebaseAuthService.onAuthStateChanged((firebaseUser: User | null, userData: FirebaseUser | null) => {
       setFirebaseUser(firebaseUser)
-
-      if (firebaseUser) {
-        // For now, create a simple user object
-        const simpleUser: FirebaseUser = {
-          id: firebaseUser.uid,
-          email: firebaseUser.email || '',
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-          role: 'ADMIN' as any, // Default role
-          merchants: ['MERCHANT_A'],
-          currencies: ['USD'],
-          memberAccess: ['VIP'],
-          permissions: {},
-          isActive: true,
-          department: 'IT',
-          region: 'Global',
-          createdAt: new Date() as any,
-          updatedAt: new Date() as any,
-          lastLogin: new Date() as any,
-          additionalData: {},
-        }
-
-        setUser(simpleUser)
-
-        // Store auth token in cookie for middleware
-        firebaseUser
-          .getIdToken()
-          .then((token) => {
-            setCookie('firebase-auth-token', token, 7)
-            console.log('Auth token stored in cookie')
-          })
-          .catch((error) => {
-            console.error('Error getting auth token:', error)
-          })
-      } else {
-        setUser(null)
-        deleteCookie('firebase-auth-token')
-        console.log('Auth token cleared from cookie')
-      }
-
-      if (mounted) {
-        setLoading(false)
-        setError(null)
-      }
+      setUser(userData)
+      setLoading(false)
+      setError(null)
     })
 
-    // Set a timeout to prevent infinite loading
-    const timeout = setTimeout(() => {
-      if (mounted) {
-        console.log('Auth state listener timeout - setting loading to false')
-        setLoading(false)
-      }
-    }, 3000) // 3 seconds timeout
-
-    return () => {
-      mounted = false
-      unsubscribe()
-      clearTimeout(timeout)
-    }
+    return () => unsubscribe()
   }, [])
 
   const login = async (email: string, password: string) => {
     try {
+      setLoading(true)
       setError(null)
 
-      const userCredential = await signInWithEmailAndPassword(auth, email, password)
-      const firebaseUser = userCredential.user
+      const { user: firebaseUser, userData } = await FirebaseAuthService.signIn(email, password)
 
-      // Store the token in cookie
-      const token = await firebaseUser.getIdToken()
-      setCookie('firebase-auth-token', token, 7)
+      if (!userData.isActive) {
+        await FirebaseAuthService.signOut()
+        throw new Error('Your account has been deactivated. Please contact your administrator.')
+      }
+
+      setFirebaseUser(firebaseUser)
+      setUser(userData)
     } catch (error: any) {
       setError(error.message)
       throw error
+    } finally {
+      setLoading(false)
     }
   }
 
   const logout = async () => {
     try {
       setError(null)
-      await signOut(auth)
-      deleteCookie('firebase-auth-token')
-      window.location.href = '/login'
+      await FirebaseAuthService.signOut()
+      setUser(null)
+      setFirebaseUser(null)
     } catch (error: any) {
       setError(error.message)
       throw error
@@ -159,23 +86,22 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
 
   const hasPermission = (module: string, permission: Permission): boolean => {
     if (!user) return false
-    // Simplified permission check
-    return user.role === 'ADMIN' || user.permissions[module]?.includes(permission) || false
+    return FirebaseAuthService.hasPermission(user, module, permission)
   }
 
   const canAccessMerchant = (merchant: string): boolean => {
     if (!user) return false
-    return user.merchants.includes(merchant) || user.role === 'ADMIN'
+    return FirebaseAuthService.canAccessMerchant(user, merchant)
   }
 
   const canAccessCurrency = (currency: string): boolean => {
     if (!user) return false
-    return user.currencies.includes(currency) || user.role === 'ADMIN'
+    return FirebaseAuthService.canAccessCurrency(user, currency)
   }
 
   const canAccessMemberType = (memberType: MemberType): boolean => {
     if (!user) return false
-    return user.memberAccess.includes(memberType) || user.role === 'ADMIN'
+    return FirebaseAuthService.canAccessMemberType(user, memberType)
   }
 
   const getUserDataField = (fieldName: string): any => {
@@ -184,30 +110,64 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
   }
 
   const hasEnhancedPermission = (module: string, permission: Permission): boolean => {
+    // For now, use the same logic as hasPermission
+    // Can be extended for more complex permission logic
     return hasPermission(module, permission)
   }
 
   // Additional Firebase-specific methods
   const updateUserProfile = async (updates: Partial<FirebaseUser>) => {
     if (!user) throw new Error('No authenticated user')
-    // Simplified implementation
-    setUser({ ...user, ...updates })
+
+    try {
+      setError(null)
+      await FirebaseAuthService.updateUserData(user.id, updates, user.id)
+
+      // Update local state
+      const updatedUser = { ...user, ...updates }
+      setUser(updatedUser)
+    } catch (error: any) {
+      setError(error.message)
+      throw error
+    }
   }
 
   const updatePassword = async (newPassword: string) => {
-    // Simplified implementation
-    console.log('Password update not implemented in simplified version')
+    try {
+      setError(null)
+      await FirebaseAuthService.updateUserPassword(newPassword)
+    } catch (error: any) {
+      setError(error.message)
+      throw error
+    }
   }
 
   const refreshUserData = async () => {
-    // Simplified implementation
-    console.log('User data refresh not implemented in simplified version')
+    if (!firebaseUser) return
+
+    try {
+      const userData = await FirebaseAuthService.getUserData(firebaseUser.uid)
+      setUser(userData)
+    } catch (error: any) {
+      console.error('Error refreshing user data:', error)
+    }
   }
 
   // Check if user can manage another user (for user management module)
   const canManageUser = (targetUser: FirebaseUser): boolean => {
     if (!user) return false
-    return user.role === 'ADMIN' || user.id === targetUser.id
+
+    // Admin can manage all users
+    if (user.role === 'ADMIN') return true
+
+    // Manager can manage users in same merchants/region (excluding admins)
+    if (user.role === 'MANAGER' && targetUser.role !== 'ADMIN') {
+      const hasCommonMerchant = user.merchants.some((merchant) => targetUser.merchants.includes(merchant))
+      return hasCommonMerchant || targetUser.region === user.region
+    }
+
+    // Users can only manage themselves for profile updates
+    return user.id === targetUser.id
   }
 
   // Check if user owns a resource
@@ -234,7 +194,12 @@ export function FirebaseAuthProvider({ children }: { children: React.ReactNode }
   // Log user activity (convenience method)
   const logActivity = async (action: string, module: string, entityType: string, entityId: string, details: Record<string, any>) => {
     if (!user) return
-    console.log('Activity logged:', { action, module, entityType, entityId, details })
+
+    try {
+      await FirebaseAuthService.logActivity(user.id, action, module, entityType, entityId, details)
+    } catch (error) {
+      console.error('Error logging activity:', error)
+    }
   }
 
   const value: FirebaseAuthContext = {

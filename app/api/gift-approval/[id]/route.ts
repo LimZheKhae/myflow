@@ -18,6 +18,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         KAM_REQUESTED_BY,
         CREATED_DATE,
         WORKFLOW_STATUS,
+        MEMBER_ID,
         MEMBER_LOGIN,
         FULL_NAME,
         PHONE,
@@ -60,8 +61,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const row = rows[0]
     const gift: GiftRequestDetails = {
       giftId: row.GIFT_ID,
-      vipId: row.VIP_ID,
-      batchId: row.BATCH_ID,
+      memberId: row.MEMBER_ID?.toString() || null,
       kamRequestedBy: row.KAM_REQUESTED_BY,
       createdDate: row.CREATED_DATE ? new Date(row.CREATED_DATE) : null,
       workflowStatus: row.WORKFLOW_STATUS,

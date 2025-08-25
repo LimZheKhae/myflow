@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
 import { WorkflowStatus, TrackingStatus } from '@/types/gift'
 import { logBulkWorkflowTimeline } from '@/lib/workflow-timeline'
+import { NotificationService } from '@/services/notificationService'
+import { ServerNotificationService } from '@/services/serverNotificationService'
 
 export async function PUT(request: NextRequest) {
   try {
@@ -595,6 +597,16 @@ export async function PUT(request: NextRequest) {
         await logBulkWorkflowTimeline(timelineEntries)
       }
 
+      // Create notification for reject actions only
+      if (action.includes('reject')) {
+        try {
+          await createBulkRejectNotification(giftIds, reason || 'No reason provided', userId)
+        } catch (notificationError) {
+          console.error('Error creating bulk reject notification:', notificationError)
+          // Don't fail the request if notification creation fails
+        }
+      }
+
       // Commit the transaction
       console.log('🔍 [BULK ACTIONS] Committing Transaction:', {
         action,
@@ -658,5 +670,44 @@ export async function PUT(request: NextRequest) {
       },
       { status: 500 }
     )
+  }
+}
+
+// Helper function to create bulk reject notifications
+async function createBulkRejectNotification(giftIds: number[], rejectReason: string, userId: string) {
+  try {
+    await ServerNotificationService.createNotification({
+      userId: null, // Global notification
+      targetUserIds: null,
+      roles: ['KAM', 'ADMIN'], // KAM and Admin should be notified of rejections
+      module: 'gift-approval',
+      type: 'bulk_rejection',
+      title: 'Bulk Gift Rejection',
+      message: `Gifts #${giftIds.join(', ')} have been rejected. Reason: ${rejectReason}`,
+      action: 'bulk_gift_reject',
+      priority: 'high',
+      read: false,
+      readAt: null,
+      readBy: null,
+      data: {
+        giftIds,
+        rejectReason,
+        rejectedBy: userId,
+        rejectedCount: giftIds.length,
+      },
+      actions: [
+        {
+          label: 'View Gifts',
+          action: 'navigate',
+          url: '/gift-approval',
+        },
+      ],
+      expiresAt: null,
+    })
+
+    console.log(`✅ Bulk reject notification created for ${giftIds.length} gifts`)
+  } catch (error) {
+    console.error('Error creating bulk reject notification:', error)
+    throw error
   }
 }

@@ -2,6 +2,52 @@ import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
 import { debugSQL } from '@/lib/utils'
 import { logWorkflowTimeline } from '@/lib/workflow-timeline'
+import { NotificationService } from '@/services/notificationService'
+import { ServerNotificationService } from '@/services/serverNotificationService'
+
+/**
+ * SECURITY MODEL FOR GIFT APPROVAL UPDATE ROUTE
+ * 
+ * This route implements role-based access control (RBAC) with the following security requirements:
+ * 
+ * 1. AUTHENTICATION: User must be authenticated and provide valid userId
+ * 2. AUTHORIZATION: User must have specific role and permissions for each tab
+ * 3. PERMISSIONS: User must have both VIEW and EDIT permissions for gift-approval module
+ * 4. ROLE-BASED ACCESS: Each tab has specific role requirements
+ * 
+ * TAB-SPECIFIC SECURITY RULES:
+ * 
+ * PENDING TAB:
+ * - Roles: MANAGER, ADMIN
+ * - Permissions: VIEW, EDIT (gift-approval module)
+ * - Actions: approve, reject
+ * 
+ * PROCESSING TAB:
+ * - Roles: MKTOPS, MANAGER, ADMIN
+ * - Permissions: VIEW, EDIT (gift-approval module)
+ * - Actions: update, update-mktops, reject, toggle-bo, proceed
+ * 
+ * KAM_PROOF TAB:
+ * - Roles: KAM, ADMIN
+ * - Permissions: VIEW, EDIT (gift-approval module)
+ * - Actions: submit
+ * 
+ * AUDIT TAB:
+ * - Roles: AUDIT, ADMIN
+ * - Permissions: VIEW, EDIT (gift-approval module)
+ * - Actions: complete, mark-issue
+ * 
+ * SECURITY VALIDATION FLOW:
+ * 1. Validate required fields (giftId, tab, action, userId)
+ * 2. Validate user role and permissions exist
+ * 3. Validate gift-approval module permissions
+ * 4. Validate tab-specific role requirements
+ * 5. Validate tab-specific action requirements
+ * 6. Validate workflow progression
+ * 7. Perform database update
+ * 8. Log workflow timeline
+ * 9. Create notifications
+ */
 
 interface UpdateRequest {
   giftId: number
@@ -67,6 +113,28 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    // Security validation - ensure user has required permissions
+    if (!userRole || !userPermissions) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'User role and permissions are required for security validation',
+        },
+        { status: 403 }
+      )
+    }
+
+    // Validate that user has gift-approval module permissions
+    if (!userPermissions['gift-approval'] || !Array.isArray(userPermissions['gift-approval'])) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Gift approval module permissions are required',
+        },
+        { status: 403 }
+      )
+    }
+
     // Validate user role and permissions based on tab
     const validationResult = validateTabPermissions(tab, action, userRole, userPermissions)
     if (!validationResult.isValid) {
@@ -103,10 +171,25 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    // Additional validation for proceed action in processing tab
+    if (tab === 'processing' && action === 'proceed') {
+      const processingValidation = await validateProcessingRequirements(giftId)
+      if (!processingValidation.isValid) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: processingValidation.message,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // Perform the update based on tab and action
     const updateResult = await performUpdate(tab, action, {
       giftId,
       userId,
+      userRole,
       targetStatus,
       rejectReason,
       dispatcher: data?.dispatcher || dispatcher,
@@ -212,6 +295,7 @@ export async function PUT(request: NextRequest) {
 
 // Validate tab-specific permissions
 function validateTabPermissions(tab: string, action: string, userRole?: string, userPermissions?: Record<string, string[]>): { isValid: boolean; message: string } {
+  // Basic validation
   if (!userRole) {
     return { isValid: false, message: 'User role is required' }
   }
@@ -220,21 +304,26 @@ function validateTabPermissions(tab: string, action: string, userRole?: string, 
     return { isValid: false, message: 'Gift approval permissions are required' }
   }
 
+  // Check for required permissions
+  const hasViewPermission = userPermissions['gift-approval'].includes('VIEW')
   const hasEditPermission = userPermissions['gift-approval'].includes('EDIT')
 
+  if (!hasViewPermission) {
+    return { isValid: false, message: 'VIEW permission required for gift-approval module' }
+  }
+
+  if (!hasEditPermission) {
+    return { isValid: false, message: 'EDIT permission required for gift-approval module' }
+  }
+
+  // Tab-specific role and action validation
   switch (tab) {
     case 'pending':
-      // Pending tab: Manager or Admin can approve/reject
+      // Pending tab: Only Manager and Admin can approve/reject
       if (!['MANAGER', 'ADMIN'].includes(userRole)) {
         return {
           isValid: false,
           message: 'Only Manager and Admin users can approve/reject gift requests',
-        }
-      }
-      if (!hasEditPermission) {
-        return {
-          isValid: false,
-          message: 'EDIT permission required for gift-approval module',
         }
       }
       if (!['approve', 'reject'].includes(action)) {
@@ -253,12 +342,6 @@ function validateTabPermissions(tab: string, action: string, userRole?: string, 
           message: 'Only MKTOps, Manager, and Admin users can update processing information',
         }
       }
-      if (!hasEditPermission) {
-        return {
-          isValid: false,
-          message: 'EDIT permission required for gift-approval module',
-        }
-      }
       if (!['update', 'update-mktops', 'reject', 'toggle-bo', 'proceed'].includes(action)) {
         return {
           isValid: false,
@@ -268,17 +351,11 @@ function validateTabPermissions(tab: string, action: string, userRole?: string, 
       break
 
     case 'kam-proof':
-      // KAM Proof tab: KAM role can submit proof
+      // KAM Proof tab: Only KAM and Admin can submit proof
       if (!['KAM', 'ADMIN'].includes(userRole)) {
         return {
           isValid: false,
           message: 'Only KAM and Admin users can submit proof',
-        }
-      }
-      if (!hasEditPermission) {
-        return {
-          isValid: false,
-          message: 'EDIT permission required for gift-approval module',
         }
       }
       if (action !== 'submit') {
@@ -290,17 +367,11 @@ function validateTabPermissions(tab: string, action: string, userRole?: string, 
       break
 
     case 'audit':
-      // Audit tab: Audit role can audit gifts
+      // Audit tab: Only Audit and Admin can audit gifts
       if (!['AUDIT', 'ADMIN'].includes(userRole)) {
         return {
           isValid: false,
           message: 'Only Audit and Admin users can audit gifts',
-        }
-      }
-      if (!hasEditPermission) {
-        return {
-          isValid: false,
-          message: 'EDIT permission required for gift-approval module',
         }
       }
       if (!['complete', 'mark-issue'].includes(action)) {
@@ -377,6 +448,65 @@ function validateWorkflowProgression(tab: string, action: string, currentStatus:
   return { isValid: true, message: 'Workflow validation passed' }
 }
 
+// Validate processing requirements for proceed action
+async function validateProcessingRequirements(giftId: number): Promise<{ isValid: boolean; message: string }> {
+  try {
+    const result = await executeQuery(
+      `SELECT DISPATCHER, TRACKING_CODE, TRACKING_STATUS, UPLOADED_BO 
+       FROM MY_FLOW.PUBLIC.GIFT_DETAILS 
+       WHERE GIFT_ID = ?`,
+      [giftId]
+    )
+
+    if (!Array.isArray(result) || result.length === 0) {
+      return {
+        isValid: false,
+        message: 'Gift not found',
+      }
+    }
+
+    const gift = result[0]
+    const missingFields: string[] = []
+
+    // Check required fields
+    if (!gift.DISPATCHER || gift.DISPATCHER.trim() === '') {
+      missingFields.push('Dispatcher')
+    }
+
+    if (!gift.TRACKING_CODE || gift.TRACKING_CODE.trim() === '') {
+      missingFields.push('Tracking Code')
+    }
+
+    if (!gift.TRACKING_STATUS || gift.TRACKING_STATUS.trim() === '') {
+      missingFields.push('Tracking Status')
+    } else if (gift.TRACKING_STATUS !== 'Delivered') {
+      return {
+        isValid: false,
+        message: 'Tracking Status must be "Delivered" to proceed to KAM Proof',
+      }
+    }
+
+    if (gift.UPLOADED_BO !== true) {
+      missingFields.push('Uploaded BO (must be true)')
+    }
+
+    if (missingFields.length > 0) {
+      return {
+        isValid: false,
+        message: `Missing required fields: ${missingFields.join(', ')}`,
+      }
+    }
+
+    return { isValid: true, message: 'Processing requirements validation passed' }
+  } catch (error) {
+    console.error('Error validating processing requirements:', error)
+    return {
+      isValid: false,
+      message: 'Error validating processing requirements',
+    }
+  }
+}
+
 // Perform the actual update
 async function performUpdate(
   tab: string,
@@ -384,6 +514,7 @@ async function performUpdate(
   data: {
     giftId: number
     userId: string
+    userRole?: string
     targetStatus?: string
     rejectReason?: string
     dispatcher?: string
@@ -632,6 +763,16 @@ async function performUpdate(
       }
     }
 
+    // Create notification for reject actions only
+    if (action === 'reject') {
+      try {
+        await createRejectNotification(data.giftId, data.rejectReason || 'No reason provided', data.userId, data.userRole || '')
+      } catch (notificationError) {
+        console.error('Error creating reject notification:', notificationError)
+        // Don't fail the request if notification creation fails
+      }
+    }
+
     return {
       success: true,
       message: `Gift ${action} successful`,
@@ -643,5 +784,44 @@ async function performUpdate(
       success: false,
       message: error instanceof Error ? error.message : 'Unknown error during update',
     }
+  }
+}
+
+// Helper function to create reject notifications
+async function createRejectNotification(giftId: number, rejectReason: string, userId: string, userRole?: string) {
+  try {
+    await ServerNotificationService.createNotification({
+      userId: null, // Global notification
+      targetUserIds: null,
+      roles: ['KAM', 'ADMIN'], // KAM and Admin should be notified of rejections
+      module: 'gift-approval',
+      type: 'rejection',
+      title: 'Gift Rejected',
+      message: `Gift #${giftId} has been rejected. Reason: ${rejectReason}`,
+      action: 'gift_reject',
+      priority: 'high',
+      read: false,
+      readAt: null,
+      readBy: null,
+      data: {
+        giftId,
+        rejectReason,
+        rejectedBy: userId,
+        userRole,
+      },
+      actions: [
+        {
+          label: 'View Gift',
+          action: 'navigate',
+          url: `/gift-approval?giftId=${giftId}`,
+        },
+      ],
+      expiresAt: null,
+    })
+
+    console.log(`✅ Reject notification created for Gift #${giftId}`)
+  } catch (error) {
+    console.error('Error creating reject notification:', error)
+    throw error
   }
 }

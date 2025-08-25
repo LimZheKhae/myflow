@@ -8,9 +8,9 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const {
-      vipId,
       memberName,
       memberLogin,
+      memberId,
       giftItem,
       rewardName,
       rewardClubOrder,
@@ -27,16 +27,17 @@ export async function POST(request: NextRequest) {
       costMyr: number
       costLocal: number | null
       currency: string
+      memberId: number
       userRole?: string
       userPermissions?: Record<string, string[]>
     } = body
 
     // Validate required fields
-    if (!giftItem || !vipId || !costMyr || !category || !userId || !memberName || !memberLogin) {
+    if (!giftItem || !costMyr || !category || !userId || !memberName || !memberLogin || !memberId) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Gift item, VIP Player, member name, member login, value, category, and Firebase User ID are required',
+          message: 'Gift item, member name, member login, member ID, value, category, and Firebase User ID are required',
         },
         { status: 400 }
       )
@@ -108,16 +109,17 @@ export async function POST(request: NextRequest) {
     const insertSQL = `
       INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
         BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
-        MEMBER_LOGIN, REWARD_NAME, GIFT_ITEM,
+        MEMBER_ID, MEMBER_LOGIN, REWARD_NAME, GIFT_ITEM,
         COST_BASE, CURRENCY, COST_LOCAL, REMARK, REWARD_CLUB_ORDER, CATEGORY,
         LAST_MODIFIED_DATE
-      ) VALUES (?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
+      ) VALUES (?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
     `
 
     const insertParams = [
       batchId,
       userId, // KAM_REQUESTED_BY - Use user ID from request body
       'KAM_Request', // WORKFLOW_STATUS
+      memberId, // MEMBER_ID
       memberLogin, // MEMBER_LOGIN
       rewardName || null, // REWARD_NAME
       giftItem, // GIFT_ITEM
