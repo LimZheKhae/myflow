@@ -34,8 +34,7 @@ import { useMemberProfiles, useMemberValidation } from '@/contexts/member-profil
 interface TimelineEvent {
   WORKFLOW_ID: number
   GIFT_ID: number
-  FROM_STATUS: string | null
-  TO_STATUS: string
+  TIMELINE_TITLE: string
   UPDATE_DATE: string
   UPDATE_TIME: string
   REMARK: string | null
@@ -71,72 +70,72 @@ const WorkflowTimeline: React.FC<{ giftId: number }> = ({ giftId }) => {
     }
   }, [giftId])
 
-  const getStatusIcon = (status: string | null | undefined) => {
-    if (!status) return <Circle className="h-4 w-4" />
+  const getStatusIcon = (title: string | null | undefined) => {
+    if (!title) return <Circle className="h-4 w-4" />
 
-    switch (status.toLowerCase()) {
-      case 'kam request':
-        return <UserPlus className="h-4 w-4" />
-      case 'manager review':
-        return <CheckCircle className="h-4 w-4" />
-      case 'mktops processing':
-        return <Truck className="h-4 w-4" />
-      case 'kam proof':
-        return <Camera className="h-4 w-4" />
-      case 'salesops audit':
-        return <Shield className="h-4 w-4" />
-      case 'completed':
-        return <CheckCircle2 className="h-4 w-4" />
-      case 'rejected':
-        return <XCircle className="h-4 w-4" />
-      default:
-        return <Circle className="h-4 w-4" />
+    const titleLower = title.toLowerCase()
+    if (titleLower.includes('gift request submitted') || titleLower.includes('kam request')) {
+      return <UserPlus className="h-4 w-4" />
+    } else if (titleLower.includes('manager review')) {
+      return <CheckCircle className="h-4 w-4" />
+    } else if (titleLower.includes('mktops processing') || titleLower.includes('mktops')) {
+      return <Truck className="h-4 w-4" />
+    } else if (titleLower.includes('delivery confirmation') || titleLower.includes('kam proof')) {
+      return <Camera className="h-4 w-4" />
+    } else if (titleLower.includes('salesops audit') || titleLower.includes('audit')) {
+      return <Shield className="h-4 w-4" />
+    } else if (titleLower.includes('completed')) {
+      return <CheckCircle2 className="h-4 w-4" />
+    } else if (titleLower.includes('rejected') || titleLower.includes('audit issue')) {
+      return <XCircle className="h-4 w-4" />
+    } else {
+      return <Circle className="h-4 w-4" />
     }
   }
 
-  const getStatusColor = (status: string | null | undefined) => {
-    if (!status) return 'text-gray-600 bg-gray-100'
+  const getStatusColor = (title: string | null | undefined) => {
+    if (!title) return 'text-gray-600 bg-gray-100'
 
-    switch (status.toLowerCase()) {
-      case 'kam request':
-        return 'text-blue-600 bg-blue-100'
-      case 'manager review':
-        return 'text-yellow-600 bg-yellow-100'
-      case 'mktops processing':
-        return 'text-purple-600 bg-purple-100'
-      case 'kam proof':
-        return 'text-orange-600 bg-orange-100'
-      case 'salesops audit':
-        return 'text-indigo-600 bg-indigo-100'
-      case 'completed':
-        return 'text-green-600 bg-green-100'
-      case 'rejected':
-        return 'text-red-600 bg-red-100'
-      default:
-        return 'text-gray-600 bg-gray-100'
+    const titleLower = title.toLowerCase()
+    if (titleLower.includes('gift request submitted') || titleLower.includes('kam request')) {
+      return 'text-blue-600 bg-blue-100'
+    } else if (titleLower.includes('manager review')) {
+      return 'text-yellow-600 bg-yellow-100'
+    } else if (titleLower.includes('mktops processing') || titleLower.includes('mktops')) {
+      return 'text-purple-600 bg-purple-100'
+    } else if (titleLower.includes('delivery confirmation') || titleLower.includes('kam proof')) {
+      return 'text-orange-600 bg-orange-100'
+    } else if (titleLower.includes('salesops audit') || titleLower.includes('audit')) {
+      return 'text-indigo-600 bg-indigo-100'
+    } else if (titleLower.includes('completed')) {
+      return 'text-green-600 bg-green-100'
+    } else if (titleLower.includes('rejected') || titleLower.includes('audit issue')) {
+      return 'text-red-600 bg-red-100'
+    } else {
+      return 'text-gray-600 bg-gray-100'
     }
   }
 
-  const getStatusIconColor = (status: string | null | undefined) => {
-    if (!status) return 'text-gray-500'
+  const getStatusIconColor = (title: string | null | undefined) => {
+    if (!title) return 'text-gray-500'
 
-    switch (status.toLowerCase()) {
-      case 'kam request':
-        return 'text-blue-500'
-      case 'manager review':
-        return 'text-yellow-500'
-      case 'mktops processing':
-        return 'text-purple-500'
-      case 'kam proof':
-        return 'text-orange-500'
-      case 'salesops audit':
-        return 'text-indigo-500'
-      case 'completed':
-        return 'text-green-500'
-      case 'rejected':
-        return 'text-red-500'
-      default:
-        return 'text-gray-500'
+    const titleLower = title.toLowerCase()
+    if (titleLower.includes('gift request submitted') || titleLower.includes('kam request')) {
+      return 'text-blue-500'
+    } else if (titleLower.includes('manager review')) {
+      return 'text-yellow-500'
+    } else if (titleLower.includes('mktops processing') || titleLower.includes('mktops')) {
+      return 'text-purple-500'
+    } else if (titleLower.includes('delivery confirmation') || titleLower.includes('kam proof')) {
+      return 'text-orange-500'
+    } else if (titleLower.includes('salesops audit') || titleLower.includes('audit')) {
+      return 'text-indigo-500'
+    } else if (titleLower.includes('completed')) {
+      return 'text-green-500'
+    } else if (titleLower.includes('rejected') || titleLower.includes('audit issue')) {
+      return 'text-red-500'
+    } else {
+      return 'text-gray-500'
     }
   }
 
@@ -179,8 +178,8 @@ const WorkflowTimeline: React.FC<{ giftId: number }> = ({ giftId }) => {
         <div key={event.WORKFLOW_ID} className="flex items-start space-x-4">
           {/* Timeline Line */}
           <div className="flex flex-col items-center">
-            <div className={`p-2 rounded-full ${getStatusColor(event.TO_STATUS)}`}>
-              {getStatusIcon(event.TO_STATUS)}
+            <div className={`p-2 rounded-full ${getStatusColor(event.TIMELINE_TITLE)}`}>
+              {getStatusIcon(event.TIMELINE_TITLE)}
             </div>
             {index < timelineEvents.length - 1 && (
               <div className="w-0.5 h-8 bg-slate-200 mt-2"></div>
@@ -192,13 +191,13 @@ const WorkflowTimeline: React.FC<{ giftId: number }> = ({ giftId }) => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <h4 className="font-medium text-slate-900">
-                  {event.FROM_STATUS ? `${event.FROM_STATUS} → ${event.TO_STATUS}` : event.TO_STATUS}
+                  {event.TIMELINE_TITLE}
                 </h4>
                 <Badge
                   variant="outline"
-                  className={`text-xs ${getStatusColor(event.TO_STATUS)}`}
+                  className={`text-xs ${getStatusColor(event.TIMELINE_TITLE)}`}
                 >
-                  {event.TO_STATUS}
+                  {event.TIMELINE_TITLE}
                 </Badge>
               </div>
               <div className="flex items-center space-x-2 text-sm text-slate-500">
@@ -213,21 +212,6 @@ const WorkflowTimeline: React.FC<{ giftId: number }> = ({ giftId }) => {
               <p className="text-sm text-slate-600 leading-relaxed">
                 {event.REMARK}
               </p>
-            )}
-
-            {/* Status transition indicator */}
-            {event.FROM_STATUS && (
-              <div className="flex items-center gap-2 mt-2">
-                <div className="flex items-center gap-1 text-xs text-slate-400">
-                  <span className={`w-2 h-2 rounded-full ${getStatusIconColor(event.FROM_STATUS)} bg-current`}></span>
-                  <span>{event.FROM_STATUS}</span>
-                </div>
-                <ArrowRight className="h-3 w-3 text-slate-300" />
-                <div className="flex items-center gap-1 text-xs text-slate-600">
-                  <span className={`w-2 h-2 rounded-full ${getStatusIconColor(event.TO_STATUS)} bg-current`}></span>
-                  <span className="font-medium">{event.TO_STATUS}</span>
-                </div>
-              </div>
             )}
           </div>
         </div>

@@ -5,8 +5,7 @@ import { executeQuery } from '@/lib/snowflake/config'
 interface TimelineEvent {
   WORKFLOW_ID: number
   GIFT_ID: number
-  FROM_STATUS: string | null
-  TO_STATUS: string
+  TIMELINE_TITLE: string
   UPDATE_DATE: string
   UPDATE_TIME: string
   REMARK: string | null
@@ -36,13 +35,12 @@ export async function GET(request: NextRequest): Promise<NextResponse<TimelineRe
       )
     }
 
-    // Query the workflow timeline view
+    // Query the workflow timeline view with updated structure
     const query = `
       SELECT 
         WORKFLOW_ID,
         GIFT_ID,
-        FROM_STATUS,
-        TO_STATUS,
+        TIMELINE_TITLE,
         UPDATE_DATE,
         UPDATE_TIME,
         REMARK

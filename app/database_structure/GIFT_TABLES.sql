@@ -150,22 +150,46 @@ create or replace TABLE MY_FLOW.PUBLIC.GIFT_WORKFLOW_TIMELINE (
 	primary key (ID)
 );
 -- Gift Workflow Timeline View
-
 create or replace view MY_FLOW.PRESENTATION.VIEW_GIF_WORKFLOW_TIMELINE(
 	WORKFLOW_ID,
 	GIFT_ID,
-	FROM_STATUS,
-	TO_STATUS,
+	TIMELINE_TITLE,
 	UPDATE_DATE,
 	UPDATE_TIME,
 	REMARK
 ) as SELECT 
     GWT.ID,
     GWT.GIFT_ID,
-    REPLACE(GWT.FROM_STATUS, '_', ' ') AS FROM_STATUS,
-    REPLACE(GWT.TO_STATUS, '_', ' ') AS TO_STATUS,
+    
+    CASE
+        WHEN GWT.FROM_STATUS IS NULL AND GWT.TO_STATUS = 'KAM_Request'
+        THEN 'Gift Request Submitted'
+
+        WHEN GWT.FROM_STATUS = 'KAM_Request' AND GWT.TO_STATUS = 'Manager_Review'
+        THEN 'Manager Review'
+        
+        WHEN GWT.FROM_STATUS = 'Manager_Review' AND GWT.TO_STATUS = 'MKTOps_Processing'
+        THEN 'MKTOps Processing'
+        
+        WHEN GWT.FROM_STATUS = 'MKTOps_Processing' AND GWT.TO_STATUS = 'KAM_Proof'
+        THEN 'Delivery Confirmation'
+        
+        WHEN GWT.FROM_STATUS = 'KAM_Proof' AND GWT.TO_STATUS = 'SalesOps Audit'
+        THEN 'SalesOps Audit'
+
+        WHEN GWT.FROM_STATUS = 'SalesOps_Audit' AND GWT.TO_STATUS = 'KAM_Proof'
+        THEN 'Audit Issue'
+        
+        WHEN GWT.FROM_STATUS = 'SalesOps_Audit' AND GWT.TO_STATUS = 'Completed'
+        THEN 'Completed'
+        
+        ELSE NULL
+        
+    END AS TIMELINE_TITLE,
+    
     TO_VARCHAR(DATEADD('hour', 8, CHANGED_AT), 'YYYY-MM-DD') AS UPDATE_DATE,
     TO_VARCHAR(DATEADD('hour', 8, CHANGED_AT), 'HH12:MIAM') AS UPDATE_TIME,
+    
     CASE
         WHEN GWT.FROM_STATUS IS NULL AND GWT.TO_STATUS = 'KAM_Request' 
         THEN 'Request submitted by ' || GD.KAM_NAME || ' for ' || GD.FULL_NAME
@@ -176,7 +200,7 @@ create or replace view MY_FLOW.PRESENTATION.VIEW_GIF_WORKFLOW_TIMELINE(
         WHEN GWT.FROM_STATUS = 'KAM_Request' AND GWT.TO_STATUS = 'Manager_Review' AND GD.REJECT_REASON IS NOT NULL
         THEN 'Rejected by ' || U.NAME || ': ' || GD.REJECT_REASON
 
-        WHEN GWT.FROM_STATUS = 'Manager_Review' AND GWT.TO_STATUS = 'MKTOps_Processing' AND GD.TRACKING_STATUS = 'Pending'
+        WHEN GWT.FROM_STATUS = 'Manager_Review' AND GWT.TO_STATUS = 'MKTOps_Processing'
         THEN 'Pending parcel to be picked up by dispatcher'
 
         WHEN GWT.FROM_STATUS = 'Manager_Review' AND GWT.TO_STATUS = 'MKTOps_Processing' AND GD.TRACKING_STATUS = 'In Transit'
@@ -185,10 +209,13 @@ create or replace view MY_FLOW.PRESENTATION.VIEW_GIF_WORKFLOW_TIMELINE(
         WHEN GWT.FROM_STATUS = 'Manager_Review' AND GWT.TO_STATUS = 'MKTOps_Processing' AND GD.TRACKING_STATUS = 'Delivered'
         THEN 'Parcel successfully delivered'
 
-        WHEN GWT.FROM_STATUS = 'MKTOps_Processing' AND GWT.TO_STATUS = 'KAM_Proof' AND GD.KAM_PROOF IS NULL
+        WHEN GWT.FROM_STATUS = 'Manager_Review' AND GWT.TO_STATUS = 'MKTOps_Processing' AND GD.TRACKING_STATUS = 'Failed'
+        THEN 'Parcel failed to deliver'
+
+        WHEN GWT.FROM_STATUS = 'MKTOps_Processing' AND GWT.TO_STATUS = 'KAM_Proof' AND GD.GIFT_FEEDBACK IS NULL
         THEN 'Awaiting proof submission by KAM'
 
-        WHEN GWT.FROM_STATUS = 'MKTOps_Processing' AND GWT.TO_STATUS = 'KAM_Proof' AND GD.KAM_PROOF IS NOT NULL
+        WHEN GWT.FROM_STATUS = 'MKTOps_Processing' AND GWT.TO_STATUS = 'KAM_Proof' AND GD.GIFT_FEEDBACK IS NOT NULL
         THEN 'Proof submission uploaded by ' || GD.KAM_PROOF_NAME
 
         WHEN GWT.FROM_STATUS = 'KAM_Proof' AND GWT.TO_STATUS = 'SalesOps_Audit' AND GD.AUDIT_DATE IS NULL
@@ -208,9 +235,11 @@ create or replace view MY_FLOW.PRESENTATION.VIEW_GIF_WORKFLOW_TIMELINE(
                 ELSE ''
         END
 
+        WHEN GWT.FROM_STATUS = 'SalesOps_Audit' AND GWT.TO_STATUS = 'Completed'
+        THEN 'Gift Request Completed'
+
         ELSE NULL
     END AS REMARK
-    
 
 FROM MY_FLOW.PUBLIC.GIFT_WORKFLOW_TIMELINE GWT
 LEFT JOIN MY_FLOW.PRESENTATION.VIEW_GIFT_DETAILS GD
