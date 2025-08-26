@@ -8,8 +8,17 @@ import { useNotifications } from '@/contexts/NotificationContext'
 import { NotificationPanel } from './NotificationPanel'
 
 export const NotificationBell: React.FC = () => {
-  const { unreadCount } = useNotifications()
+  const { unreadCount, notifications } = useNotifications()
   const [isOpen, setIsOpen] = useState(false)
+
+  // Debug logging
+  React.useEffect(() => {
+    console.log('🔔 [BELL] NotificationBell state:', {
+      unreadCount,
+      totalNotifications: notifications.length,
+      notificationIds: notifications.map(n => n.id)
+    })
+  }, [unreadCount, notifications])
 
   return (
     <div className="relative">

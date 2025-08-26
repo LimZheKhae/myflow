@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
-import { GiftRequestDetails, GiftFilters, WorkflowStatus, GiftCategory } from '@/types/gift'
+import { GiftRequestDetails, GiftRequestDetailsView, GiftFilters, WorkflowStatus, GiftCategory } from '@/types/gift'
 import { debugSQL } from '@/lib/utils'
 
 export async function GET(request: NextRequest) {
@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
     const result = await executeQuery(dataSQL, params)
 
     // Transform the data to match our TypeScript interface using view data
-    const gifts: GiftRequestDetails[] = (result as any[]).map((row: any) => ({
+    const gifts: GiftRequestDetailsView[] = (result as any[]).map((row: any) => ({
       giftId: row.GIFT_ID,
       merchantName: row.MERCHANT_NAME,
       kamRequestedBy: row.KAM_NAME,
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest) {
       kamProofBy: row.KAM_PROOF_NAME,
       kamProofEmail: row.KAM_PROOF_EMAIL,
       giftFeedback: row.GIFT_FEEDBACK,
-      auditedBy: row.AUDITER_NAME,
+      auditorName: row.AUDITER_NAME,
       auditorEmail: row.AUDITER_EMAIL,
       auditDate: row.AUDIT_DATE ? new Date(row.AUDIT_DATE) : null,
       auditRemark: row.AUDIT_REMARK,

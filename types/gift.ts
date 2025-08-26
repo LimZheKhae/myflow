@@ -27,73 +27,148 @@ export const giftRequestFormSchema = z.object({
 
 export type GiftRequestFormSchema = z.infer<typeof giftRequestFormSchema>
 
-export interface GiftRequestDetails {
-  // Primary Key
-  giftId: number
+export type WorkflowStatus = 
+  | 'KAM_Request' 
+  | 'Manager_Review' 
+  | 'MKTOps_Processing' 
+  | 'KAM_Proof' 
+  | 'SalesOps_Audit' 
+  | 'Completed' 
+  | 'Rejected'
 
-  // Basic Information (from view)
-  merchantName?: string | null
-  kamRequestedBy: string | null // KAM_NAME from view
-  kamEmail?: string | null
+export type TrackingStatus = 
+  | 'Pending' 
+  | 'In_Transit' 
+  | 'Delivered' 
+  | 'Failed' 
+  | 'Returned'
+
+export type GiftCategory = 
+  | 'Electronics' 
+  | 'Fashion' 
+  | 'Home & Living' 
+  | 'Sports & Outdoor' 
+  | 'Beauty & Health' 
+  | 'Books & Media' 
+  | 'Food & Beverages' 
+  | 'Other'
+
+// Base gift details interface (raw table data)
+export interface GiftRequestDetailsTable {
+  giftId: number
+  memberId: string | null
+  kamRequestedBy: string | null // User ID
   createdDate: Date | null
   workflowStatus: WorkflowStatus | null
-
-  // Player Information
-  memberId: string | null
   memberLogin: string | null
   fullName: string | null
   phone: string | null
   address: string | null
-
-  // Gift Information
   rewardName: string | null
   giftItem: string | null
-  costMyr: number | null // COST_BASE from view
-  costVnd: number | null // COST_LOCAL from view
-  currency?: string | null
+  costMyr: number | null
+  costVnd: number | null
   remark: string | null
   rewardClubOrder: string | null
   category: GiftCategory | null
-
-  // Approval Information (from view)
-  approvalReviewedBy: string | null // MANAGER_NAME from view
-  managerEmail?: string | null
-
-  // MKTOps Information (from view)
+  approvalReviewedBy: string | null // User ID
   dispatcher: string | null
   trackingCode: string | null
   trackingStatus: TrackingStatus | null
-  purchasedBy: string | null // MKTOPS_NAME from view
-  mktOpsEmail?: string | null
+  purchasedBy: string | null // User ID
   mktPurchaseDate: Date | null
-  uploadedBo: boolean | null
+  uploadedBo: string | null
   mktProof: string | null
-
-  // KAM Proof Information (from view)
   kamProof: string | null
-  kamProofBy: string | null // KAM_PROOF_NAME from view
-  kamProofEmail?: string | null
+  kamProofBy: string | null // User ID
   giftFeedback: string | null
-
-  // Audit Information (from view)
-  auditedBy: string | null // AUDITER_NAME from view
-  auditorEmail?: string | null
+  
+  // Audit Information (from base table)
+  auditedBy: string | null // AUDITED_BY from base table (user ID)
   auditDate: Date | null
   auditRemark: string | null
-
-  // Rejection Information
   rejectReason: string | null
-
-  // System Information
   lastModifiedDate: Date | null
 }
 
+// Gift details from database view (with resolved names)
+export interface GiftRequestDetailsView {
+  giftId: number
+  merchantName?: string | null
+  kamRequestedBy: string | null // KAM_NAME from view (resolved name)
+  kamEmail?: string | null
+  memberId: string | null
+  createdDate: Date | null
+  workflowStatus: WorkflowStatus | null
+  memberLogin?: string | null
+  fullName?: string | null
+  phone?: string | null
+  address?: string | null
+  rewardName?: string | null
+  giftItem?: string | null
+  costMyr?: number | null
+  costVnd?: number | null
+  currency?: string | null
+  remark?: string | null
+  rewardClubOrder?: string | null
+  category?: GiftCategory | null
+  approvalReviewedBy?: string | null // MANAGER_NAME from view (resolved name)
+  managerEmail?: string | null
+  dispatcher?: string | null
+  trackingCode?: string | null
+  trackingStatus?: TrackingStatus | null
+  purchasedBy?: string | null // MKTOPS_NAME from view (resolved name)
+  mktOpsEmail?: string | null
+  mktPurchaseDate?: Date | null
+  uploadedBo?: string | null
+  mktProof?: string | null
+  kamProof?: string | null
+  kamProofBy?: string | null // KAM_PROOF_NAME from view (resolved name)
+  kamProofEmail?: string | null
+  giftFeedback?: string | null
+  
+  // Audit Information (from view)
+  auditorName: string | null // AUDITER_NAME from view (resolved name)
+  auditorEmail?: string | null
+  auditDate: Date | null
+  auditRemark?: string | null
+  rejectReason?: string | null
+  lastModifiedDate: Date | null
+}
+
+// Legacy type - keeping for backward compatibility
+// This maps to GiftRequestDetailsView for now
+export interface GiftRequestDetails extends GiftRequestDetailsView {}
+
 // Enums for better type safety
-export type GiftCategory = 'Birthday' | 'Retention' | 'High Roller' | 'Promotion' | 'Other'
+export enum WorkflowStatusEnum {
+  KAM_REQUEST = 'KAM_Request',
+  MANAGER_REVIEW = 'Manager_Review',
+  MKTOPS_PROCESSING = 'MKTOps_Processing',
+  KAM_PROOF = 'KAM_Proof',
+  SALESOPS_AUDIT = 'SalesOps_Audit',
+  COMPLETED = 'Completed',
+  REJECTED = 'Rejected'
+}
 
-export type TrackingStatus = 'Pending' | 'In Transit' | 'Delivered' | 'Failed' | 'Returned'
+export enum TrackingStatusEnum {
+  PENDING = 'Pending',
+  IN_TRANSIT = 'In_Transit',
+  DELIVERED = 'Delivered',
+  FAILED = 'Failed',
+  RETURNED = 'Returned'
+}
 
-export type WorkflowStatus = 'KAM_Request' | 'Manager_Review' | 'MKTOps_Processing' | 'KAM_Proof' | 'SalesOps_Audit' | 'Completed' | 'Rejected'
+export enum GiftCategoryEnum {
+  ELECTRONICS = 'Electronics',
+  FASHION = 'Fashion',
+  HOME_LIVING = 'Home & Living',
+  SPORTS_OUTDOOR = 'Sports & Outdoor',
+  BEAUTY_HEALTH = 'Beauty & Health',
+  BOOKS_MEDIA = 'Books & Media',
+  FOOD_BEVERAGES = 'Food & Beverages',
+  OTHER = 'Other'
+}
 
 // Bulk Import Types
 export interface BulkImportBatch {

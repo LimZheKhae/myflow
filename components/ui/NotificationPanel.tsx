@@ -17,6 +17,20 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
   const { notifications, markAsRead } = useNotifications()
   const { handleNotificationAction } = useNotificationActions()
 
+  // Debug logging
+  React.useEffect(() => {
+    console.log('🔔 [PANEL] NotificationPanel state:', {
+      totalNotifications: notifications.length,
+      notifications: notifications.map(n => ({
+        id: n.id,
+        title: n.title,
+        read: n.read,
+        priority: n.priority,
+        module: n.module
+      }))
+    })
+  }, [notifications])
+
   const getPriorityIcon = (priority: string) => {
     switch (priority) {
       case 'critical':

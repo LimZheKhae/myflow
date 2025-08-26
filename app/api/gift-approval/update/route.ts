@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
 import { debugSQL } from '@/lib/utils'
 import { logWorkflowTimeline } from '@/lib/workflow-timeline'
-import { NotificationService } from '@/services/notificationService'
-import { ServerNotificationService } from '@/services/serverNotificationService'
+import { IntegratedNotificationService } from '@/services/integratedNotificationService'
 
 /**
  * SECURITY MODEL FOR GIFT APPROVAL UPDATE ROUTE
@@ -136,8 +135,20 @@ export async function PUT(request: NextRequest) {
     }
 
     // Validate user role and permissions based on tab
+    // Validate tab-specific permissions
+    console.log('🔍 [PERMISSION VALIDATION] Starting validation:', {
+      tab,
+      action,
+      userRole,
+      userPermissions: userPermissions ? Object.keys(userPermissions) : 'none',
+      giftApprovalPermissions: userPermissions?.['gift-approval']
+    })
+    
     const validationResult = validateTabPermissions(tab, action, userRole, userPermissions)
+    console.log('🔍 [PERMISSION VALIDATION] Validation result:', validationResult)
+    
     if (!validationResult.isValid) {
+      console.log('❌ [PERMISSION VALIDATION] Validation failed:', validationResult.message)
       return NextResponse.json(
         {
           success: false,
@@ -146,6 +157,8 @@ export async function PUT(request: NextRequest) {
         { status: 403 }
       )
     }
+    
+    console.log('✅ [PERMISSION VALIDATION] Validation passed')
 
     // Get current gift status to validate workflow progression
     const currentGift = await getCurrentGiftStatus(giftId)
@@ -295,12 +308,22 @@ export async function PUT(request: NextRequest) {
 
 // Validate tab-specific permissions
 function validateTabPermissions(tab: string, action: string, userRole?: string, userPermissions?: Record<string, string[]>): { isValid: boolean; message: string } {
+  console.log('🔍 [PERMISSION VALIDATION] Starting validation:', {
+    tab,
+    action,
+    userRole,
+    userPermissions: userPermissions ? Object.keys(userPermissions) : 'none',
+    giftApprovalPermissions: userPermissions?.['gift-approval']
+  })
+
   // Basic validation
   if (!userRole) {
+    console.log('❌ [PERMISSION VALIDATION] No user role provided')
     return { isValid: false, message: 'User role is required' }
   }
 
   if (!userPermissions || !userPermissions['gift-approval']) {
+    console.log('❌ [PERMISSION VALIDATION] No gift-approval permissions found')
     return { isValid: false, message: 'Gift approval permissions are required' }
   }
 
@@ -308,30 +331,50 @@ function validateTabPermissions(tab: string, action: string, userRole?: string, 
   const hasViewPermission = userPermissions['gift-approval'].includes('VIEW')
   const hasEditPermission = userPermissions['gift-approval'].includes('EDIT')
 
+  console.log('🔍 [PERMISSION VALIDATION] Permission checks:', {
+    hasViewPermission,
+    hasEditPermission,
+    availablePermissions: userPermissions['gift-approval']
+  })
+
   if (!hasViewPermission) {
+    console.log('❌ [PERMISSION VALIDATION] Missing VIEW permission')
     return { isValid: false, message: 'VIEW permission required for gift-approval module' }
   }
 
   if (!hasEditPermission) {
+    console.log('❌ [PERMISSION VALIDATION] Missing EDIT permission')
     return { isValid: false, message: 'EDIT permission required for gift-approval module' }
   }
 
   // Tab-specific role and action validation
   switch (tab) {
     case 'pending':
+      console.log('🔍 [PERMISSION VALIDATION] Pending tab validation:', {
+        userRole,
+        allowedRoles: ['MANAGER', 'ADMIN'],
+        userRoleIncluded: ['MANAGER', 'ADMIN'].includes(userRole),
+        action,
+        allowedActions: ['approve', 'reject'],
+        actionIncluded: ['approve', 'reject'].includes(action)
+      })
+      
       // Pending tab: Only Manager and Admin can approve/reject
       if (!['MANAGER', 'ADMIN'].includes(userRole)) {
+        console.log('❌ [PERMISSION VALIDATION] User role not allowed for pending tab')
         return {
           isValid: false,
           message: 'Only Manager and Admin users can approve/reject gift requests',
         }
       }
       if (!['approve', 'reject'].includes(action)) {
+        console.log('❌ [PERMISSION VALIDATION] Invalid action for pending tab')
         return {
           isValid: false,
           message: "Invalid action for pending tab. Use 'approve' or 'reject'",
         }
       }
+      console.log('✅ [PERMISSION VALIDATION] Pending tab validation passed')
       break
 
     case 'processing':
@@ -683,7 +726,7 @@ async function performUpdate(
                 LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
               WHERE GIFT_ID = ?
             `
-            updateParams = [newStatus, data.checkerName || data.userId, data.giftId]
+            updateParams = [newStatus, data.userId, data.giftId] // Always store userId for consistency
           } else {
             // Mark as issue - set AUDIT_REMARK and move back to KAM_Proof
             updateSQL = `
@@ -696,7 +739,7 @@ async function performUpdate(
                 LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
               WHERE GIFT_ID = ?
             `
-            updateParams = [newStatus, data.checkerName || data.userId, data.auditRemark || 'Audit found compliance issues requiring KAM review', data.giftId]
+            updateParams = [newStatus, data.userId, data.auditRemark || 'Audit found compliance issues requiring KAM review', data.giftId] // Always store userId for consistency
           }
         }
         break
@@ -763,13 +806,92 @@ async function performUpdate(
       }
     }
 
-    // Create notification for reject actions only
+    // Send integrated notification and email for reject actions only
     if (action === 'reject') {
+      console.log("🔍 [GIFT REJECTION] Reject action detected")
       try {
-        await createRejectNotification(data.giftId, data.rejectReason || 'No reason provided', data.userId, data.userRole || '')
+        // Get gift data for integrated notification using the view table
+        const giftDataQuery = `
+          SELECT 
+            GIFT_ID,
+            FULL_NAME,
+            MEMBER_LOGIN,
+            GIFT_ITEM,
+            COST_BASE,
+            CATEGORY,
+            KAM_NAME,
+            KAM_EMAIL,
+            MANAGER_NAME,
+            REJECT_REASON,
+            CREATED_DATE,
+            LAST_MODIFIED_DATE
+          FROM MY_FLOW.PRESENTATION.VIEW_GIFT_DETAILS 
+          WHERE GIFT_ID = ?
+        `
+        const giftDataResult = await executeQuery(giftDataQuery, [data.giftId])
+        console.log("🔍 [GIFT REJECTION] Gift data result:", giftDataResult)
+        if (Array.isArray(giftDataResult) && giftDataResult.length > 0) {
+          const giftData = giftDataResult[0]
+          
+          // Get the user's name who performed the rejection
+          let rejectedByName = data.userId // Default to userId if we can't get the name
+          try {
+            const userQuery = `
+              SELECT NAME, ROLE 
+              FROM MY_FLOW.GLOBAL_CONFIG.SYS_USER_INFO 
+              WHERE USER_ID = ?
+            `
+            const userResult = await executeQuery(userQuery, [data.userId])
+            if (Array.isArray(userResult) && userResult.length > 0) {
+              const user = userResult[0]
+              rejectedByName = user.NAME || data.userId
+            }
+          } catch (userError) {
+            console.log('⚠️ Could not fetch user name, using userId:', data.userId)
+          }
+          
+          // Map the view fields to the expected format for the notification service
+          const mappedGiftData = {
+            giftId: giftData.GIFT_ID,
+            fullName: giftData.FULL_NAME,
+            memberLogin: giftData.MEMBER_LOGIN,
+            giftItem: giftData.GIFT_ITEM,
+            costMyr: giftData.COST_BASE,
+            category: giftData.CATEGORY,
+            kamRequestedBy: giftData.KAM_NAME,
+            kamEmail: giftData.KAM_EMAIL,
+            approvalReviewedBy: rejectedByName, // Use the actual name of who rejected it
+            rejectReason: data.rejectReason
+          }
+          
+          console.log('🔍 [GIFT REJECTION] Gift data for notification:', {
+            giftId: mappedGiftData.giftId,
+            kamEmail: mappedGiftData.kamEmail,
+            kamRequestedBy: mappedGiftData.kamRequestedBy,
+            rejectReason: mappedGiftData.rejectReason,
+            rejectedBy: data.userId
+          })
+          
+          console.log('🔍 [GIFT REJECTION] Sending Integrated Notification:', {
+            giftId: data.giftId,
+            targetUserIds: [], // Empty array means use role-based targeting
+            kamEmail: mappedGiftData.kamEmail,
+            rejectReason: mappedGiftData.rejectReason,
+            rejectedBy: data.userId
+          })
+          
+          // Send integrated notification (both notification and email)
+          // Pass empty array to use role-based targeting (KAM and ADMIN users)
+          await IntegratedNotificationService.sendGiftRejectionNotification(
+            mappedGiftData,
+            [] // Empty array will trigger role-based targeting
+          )
+          
+          console.log('✅ [GIFT REJECTION] Integrated notification sent successfully')
+        }
       } catch (notificationError) {
-        console.error('Error creating reject notification:', notificationError)
-        // Don't fail the request if notification creation fails
+        console.error('❌ [GIFT REJECTION] Error sending integrated notification:', notificationError)
+        // Don't fail the request if notification/email sending fails
       }
     }
 
@@ -787,41 +909,4 @@ async function performUpdate(
   }
 }
 
-// Helper function to create reject notifications
-async function createRejectNotification(giftId: number, rejectReason: string, userId: string, userRole?: string) {
-  try {
-    await ServerNotificationService.createNotification({
-      userId: null, // Global notification
-      targetUserIds: null,
-      roles: ['KAM', 'ADMIN'], // KAM and Admin should be notified of rejections
-      module: 'gift-approval',
-      type: 'rejection',
-      title: 'Gift Rejected',
-      message: `Gift #${giftId} has been rejected. Reason: ${rejectReason}`,
-      action: 'gift_reject',
-      priority: 'high',
-      read: false,
-      readAt: null,
-      readBy: null,
-      data: {
-        giftId,
-        rejectReason,
-        rejectedBy: userId,
-        userRole,
-      },
-      actions: [
-        {
-          label: 'View Gift',
-          action: 'navigate',
-          url: `/gift-approval?giftId=${giftId}`,
-        },
-      ],
-      expiresAt: null,
-    })
 
-    console.log(`✅ Reject notification created for Gift #${giftId}`)
-  } catch (error) {
-    console.error('Error creating reject notification:', error)
-    throw error
-  }
-}

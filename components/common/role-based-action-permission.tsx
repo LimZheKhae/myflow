@@ -34,12 +34,15 @@ export default function RoleBasedActionPermission({
     return <>{fallback}</>
   }
 
-  // Check if user's role is in the allowed roles
-  const hasRolePermission = allowedRoles.includes(user.role)
+  // Check if user's role is in the allowed roles (case-insensitive)
+  const hasRolePermission = allowedRoles.some(role =>
+    role.toLowerCase() === user.role.toLowerCase()
+  )
 
   // Check if user has the required permission (if specified)
-  // Admin role bypasses permission checks
-  const hasActionPermission = user.role === 'ADMIN' ? true : (permission ? hasPermission(module || "", permission) : true)
+  // Admin role bypasses permission checks (case-insensitive)
+  const isAdmin = user.role.toLowerCase() === 'admin'
+  const hasActionPermission = isAdmin ? true : (permission ? hasPermission(module || "", permission) : true)
 
   // If user doesn't have role permission
   if (!hasRolePermission) {
@@ -52,7 +55,7 @@ export default function RoleBasedActionPermission({
     }
   }
 
-  // If user doesn't have action permission
+  // If user doesn't have action permission (only check for non-ADMIN users)
   if (!hasActionPermission) {
     if (alwaysShow) {
       // Show disabled version of the action
@@ -111,12 +114,12 @@ export const ProcurementAndAboveAction = createRoleBasedAction(['ADMIN', 'PROCUR
 // These components ALWAYS show the action (enabled or disabled) instead of hiding it
 // - If user has role AND permission: Shows enabled action
 // - If user lacks role OR permission: Shows disabled action (disabledFallback)
-export function KAMOnlyActionWithPermission({ 
-  children, 
-  fallback, 
-  disabledFallback, 
-  permission, 
-  module 
+export function KAMOnlyActionWithPermission({
+  children,
+  fallback,
+  disabledFallback,
+  permission,
+  module
 }: {
   children: React.ReactNode
   fallback?: React.ReactNode
@@ -138,12 +141,12 @@ export function KAMOnlyActionWithPermission({
   )
 }
 
-export function ManagerAndAboveActionWithPermission({ 
-  children, 
-  fallback, 
-  disabledFallback, 
-  permission, 
-  module 
+export function ManagerAndAboveActionWithPermission({
+  children,
+  fallback,
+  disabledFallback,
+  permission,
+  module
 }: {
   children: React.ReactNode
   fallback?: React.ReactNode
@@ -165,12 +168,12 @@ export function ManagerAndAboveActionWithPermission({
   )
 }
 
-export function AuditAndAboveActionWithPermission({ 
-  children, 
-  fallback, 
-  disabledFallback, 
-  permission, 
-  module 
+export function AuditAndAboveActionWithPermission({
+  children,
+  fallback,
+  disabledFallback,
+  permission,
+  module
 }: {
   children: React.ReactNode
   fallback?: React.ReactNode
@@ -192,12 +195,12 @@ export function AuditAndAboveActionWithPermission({
   )
 }
 
-export function KAMAndAdminActionWithPermission({ 
-  children, 
-  fallback, 
-  disabledFallback, 
-  permission, 
-  module 
+export function KAMAndAdminActionWithPermission({
+  children,
+  fallback,
+  disabledFallback,
+  permission,
+  module
 }: {
   children: React.ReactNode
   fallback?: React.ReactNode

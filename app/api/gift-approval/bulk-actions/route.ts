@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
 import { WorkflowStatus, TrackingStatus } from '@/types/gift'
 import { logBulkWorkflowTimeline } from '@/lib/workflow-timeline'
-import { NotificationService } from '@/services/notificationService'
-import { ServerNotificationService } from '@/services/serverNotificationService'
+import { IntegratedNotificationService } from '@/services/integratedNotificationService'
 
 export async function PUT(request: NextRequest) {
   try {
@@ -338,7 +337,7 @@ export async function PUT(request: NextRequest) {
       // AUDIT TAB ACTIONS
       case 'bulk_mark_completed':
         updateFields.push('WORKFLOW_STATUS = ?', 'AUDITED_BY = ?', 'AUDIT_DATE = CURRENT_TIMESTAMP()')
-        updateParams.push('Completed', checkerName)
+        updateParams.push('Completed', userId) // Store userId for consistency
         if (auditRemark) {
           updateFields.push('AUDIT_REMARK = ?')
           updateParams.push(auditRemark)
@@ -355,8 +354,8 @@ export async function PUT(request: NextRequest) {
         break
 
       case 'bulk_mark_as_issue':
-        updateFields.push('WORKFLOW_STATUS = ?', 'AUDITED_BY = ?')
-        updateParams.push('KAM_Proof', checkerName)
+        updateFields.push('WORKFLOW_STATUS = ?', 'AUDITED_BY = ?', 'AUDIT_DATE = CURRENT_TIMESTAMP()')
+        updateParams.push('KAM_Proof', userId) // Store userId for consistency
         if (auditRemark) {
           updateFields.push('AUDIT_REMARK = ?')
           updateParams.push(auditRemark)
@@ -597,13 +596,82 @@ export async function PUT(request: NextRequest) {
         await logBulkWorkflowTimeline(timelineEntries)
       }
 
-      // Create notification for reject actions only
+      // Create notification and send emails for reject actions only
+      // Only send email notifications for rejection actions
       if (action.includes('reject')) {
         try {
-          await createBulkRejectNotification(giftIds, reason || 'No reason provided', userId)
+          console.log('🚀 [BULK REJECTION] Processing bulk rejection notification')
+          
+          // Get gift data for emails using the view table
+          const giftDataQuery = `
+            SELECT 
+              GIFT_ID,
+              FULL_NAME,
+              MEMBER_LOGIN,
+              GIFT_ITEM,
+              COST_BASE,
+              CATEGORY,
+              KAM_NAME,
+              KAM_EMAIL,
+              MANAGER_NAME,
+              REJECT_REASON,
+              CREATED_DATE,
+              LAST_MODIFIED_DATE
+            FROM MY_FLOW.PRESENTATION.VIEW_GIFT_DETAILS 
+            WHERE GIFT_ID IN (${placeholders})
+          `
+          const giftDataResult = await executeQuery(giftDataQuery, giftIds)
+          
+          if (Array.isArray(giftDataResult) && giftDataResult.length > 0) {
+            // Get the user's name who performed the rejection
+            let rejectedByName = uploadedBy // Default to uploadedBy if we can't get the name
+            try {
+                          const userQuery = `
+              SELECT NAME, ROLE 
+              FROM MY_FLOW.GLOBAL_CONFIG.SYS_USER_INFO 
+              WHERE USER_ID = ?
+            `
+              const userResult = await executeQuery(userQuery, [uploadedBy])
+              if (Array.isArray(userResult) && userResult.length > 0) {
+                const user = userResult[0]
+                rejectedByName = user.NAME || uploadedBy
+              }
+            } catch (userError) {
+              console.log('⚠️ Could not fetch user name, using uploadedBy:', uploadedBy)
+            }
+            // Map the view fields to the expected format for the notification service
+            const giftDataArray = giftDataResult.map(gift => ({
+              giftId: gift.GIFT_ID,
+              fullName: gift.FULL_NAME,
+              memberLogin: gift.MEMBER_LOGIN,
+              giftItem: gift.GIFT_ITEM,
+              costMyr: gift.COST_BASE,
+              category: gift.CATEGORY,
+              kamRequestedBy: gift.KAM_NAME,
+              kamEmail: gift.KAM_EMAIL,
+              approvalReviewedBy: rejectedByName, // Use the actual name of who rejected it
+              rejectReason: reason // Set the rejection reason
+            }))
+            
+            console.log('🚀 [BULK REJECTION] Sending dedicated bulk rejection notification:', {
+              giftCount: giftDataArray.length,
+              rejectedBy: rejectedByName,
+              rejectReason: reason
+            })
+            
+            // Send dedicated bulk rejection notification (both email and in-app)
+            await IntegratedNotificationService.sendBulkGiftRejectionNotification(
+              giftDataArray,
+              rejectedByName, // user ID who performed the rejection
+              reason, // rejection reason
+              ['KAM', 'ADMIN'] // target roles
+            )
+            
+            console.log('✅ [BULK REJECTION] Bulk rejection notification sent successfully')
+          }
         } catch (notificationError) {
-          console.error('Error creating bulk reject notification:', notificationError)
-          // Don't fail the request if notification creation fails
+          console.error('❌ [BULK REJECTION] Error sending bulk rejection notification:', notificationError)
+          // Don't fail the request if notification/email sending fails
         }
       }
 
@@ -673,41 +741,4 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// Helper function to create bulk reject notifications
-async function createBulkRejectNotification(giftIds: number[], rejectReason: string, userId: string) {
-  try {
-    await ServerNotificationService.createNotification({
-      userId: null, // Global notification
-      targetUserIds: null,
-      roles: ['KAM', 'ADMIN'], // KAM and Admin should be notified of rejections
-      module: 'gift-approval',
-      type: 'bulk_rejection',
-      title: 'Bulk Gift Rejection',
-      message: `Gifts #${giftIds.join(', ')} have been rejected. Reason: ${rejectReason}`,
-      action: 'bulk_gift_reject',
-      priority: 'high',
-      read: false,
-      readAt: null,
-      readBy: null,
-      data: {
-        giftIds,
-        rejectReason,
-        rejectedBy: userId,
-        rejectedCount: giftIds.length,
-      },
-      actions: [
-        {
-          label: 'View Gifts',
-          action: 'navigate',
-          url: '/gift-approval',
-        },
-      ],
-      expiresAt: null,
-    })
 
-    console.log(`✅ Bulk reject notification created for ${giftIds.length} gifts`)
-  } catch (error) {
-    console.error('Error creating bulk reject notification:', error)
-    throw error
-  }
-}

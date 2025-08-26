@@ -44,7 +44,7 @@ export async function GET(request: NextRequest): Promise<NextResponse<TimelineRe
         UPDATE_DATE,
         UPDATE_TIME,
         REMARK
-      FROM MY_FLOW.PRESENTATION.VIEW_GIF_WORKFLOW_TIMELINE
+      FROM MY_FLOW.PRESENTATION.VIEW_GIFT_WORKFLOW_TIMELINE
       WHERE GIFT_ID = ?
       ORDER BY WORKFLOW_ID ASC
     `

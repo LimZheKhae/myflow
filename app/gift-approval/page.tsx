@@ -27,7 +27,7 @@ import { toast } from 'sonner'
 import { exportToCSV, formatMoney, getImageProxyUrl, getImageDownloadUrl } from '@/lib/utils'
 import { FileUploader } from '@/components/ui/file-uploader'
 
-import type { GiftRequestDetails, GiftCategory, WorkflowStatus, TrackingStatus, GiftRequestForm } from '@/types/gift'
+import type { GiftRequestDetails, GiftRequestDetailsView, GiftCategory, WorkflowStatus, TrackingStatus, GiftRequestForm } from '@/types/gift'
 import { useMemberProfiles, useMemberValidation } from '@/contexts/member-profile-context'
 
 // Workflow Timeline Component
@@ -346,7 +346,7 @@ export default function Gifts() {
   const [searchTerm, setSearchTerm] = useState('')
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all')
   const [isAnimating, setIsAnimating] = useState(false)
-  const [selectedGift, setSelectedGift] = useState<GiftRequestDetails | null>(null)
+  const [selectedGift, setSelectedGift] = useState<GiftRequestDetailsView | null>(null)
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
 
   // Modal states
@@ -1572,6 +1572,13 @@ export default function Gifts() {
         throw new Error(data.message || 'Failed to toggle BO status')
       }
 
+      // Log activity for BO status toggle
+      await logActivity('TOGGLE_BO_STATUS', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
+        giftId,
+        action: 'toggle-bo',
+        newStatus: data.newStatus || 'toggled'
+      })
+
       toast.success('BO status updated successfully')
       await refreshGiftsData()
     } catch (error) {
@@ -1731,7 +1738,7 @@ export default function Gifts() {
       'Uploaded BO': gift.uploadedBo ? 'Yes' : 'No',
       'MKTOps Proof': gift.mktProof || '',
       'KAM Proof': gift.kamProof || '',
-      'Checker Name': gift.auditedBy || '',
+      'Checker Name': gift.auditorName || 'Unknown',
       'Checked Date': gift.auditDate ? gift.auditDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'long' }) : '',
       'Audit Remark': gift.auditRemark || '',
     }))
@@ -1807,6 +1814,8 @@ export default function Gifts() {
     }
     return <Badge className={`${colors[status as keyof typeof colors]} border`}>{status.replace('_', ' ')}</Badge>
   }
+
+
 
   // Table columns
   const columns: ColumnDef<GiftRequestDetails>[] = [
@@ -2153,7 +2162,7 @@ export default function Gifts() {
                             <p className="text-orange-700">{gift.auditRemark}</p>
                             <div className="mt-3 text-sm text-orange-600">
                               <p>
-                                <span className="font-medium">Audited by:</span> {gift.auditedBy || 'Unknown'}
+                                <span className="font-medium">Audited by:</span> {gift.auditorName || 'Unknown'}
                               </p>
                               <p>
                                 <span className="font-medium">Date:</span> {gift.auditDate ? gift.auditDate.toLocaleDateString() : 'Unknown'}
@@ -2227,7 +2236,7 @@ export default function Gifts() {
                                 <h5 className="font-medium text-slate-700 mb-2">Audit Information</h5>
                                 <div className="grid grid-cols-2 gap-4 text-sm">
                                   <div>
-                                    <span className="text-slate-600">Checker:</span> {gift.auditedBy || 'Unknown'}
+                                    <span className="text-slate-600">Checker:</span> {gift.auditorName || 'Unknown'}
                                   </div>
                                   <div>
                                     <span className="text-slate-600">Checked Date:</span> {gift.auditDate ? gift.auditDate.toLocaleDateString() : 'Unknown'}
@@ -2318,7 +2327,7 @@ export default function Gifts() {
                         trackingCode: gift.trackingCode || '',
                         trackingStatus: gift.trackingStatus || 'Pending',
                         mktOpsProof: null,
-                        existingMktProofUrl: getImageProxyUrl(gift.mktProof),
+                        existingMktProofUrl: getImageProxyUrl(gift.mktProof || null),
                       })
                       setIsMKTOpsModalOpen(true)
                     }}
@@ -2409,7 +2418,7 @@ export default function Gifts() {
                     setKAMProofForm({
                       kamProof: null, // Reset to null since we're uploading a new file
                       giftFeedback: gift.giftFeedback || '',
-                      existingKamProofUrl: getImageProxyUrl(gift.kamProof),
+                      existingKamProofUrl: getImageProxyUrl(gift.kamProof || null),
                     })
                     setIsKAMProofModalOpen(true)
                   }}
@@ -3394,7 +3403,7 @@ export default function Gifts() {
                                     <Input id="checkerNameIssue" value={user?.name || user?.email || 'Unknown'} disabled className="bg-gray-50 cursor-not-allowed" />
                                   </div>
                                   <div>
-                                    <Label htmlFor="issueRemark">Issue Details *</Label>
+                                    <Label htmlFor="issueRemark">Issue Details <span className="text-xs text-red-500">*</span></Label>
                                     <Textarea id="issueRemark" placeholder="Enter details about the issue..." value={auditRemark} onChange={(e) => setAuditRemark(e.target.value)} rows={3} className="mt-1" />
                                   </div>
                                   <div className="flex justify-end space-x-2">
@@ -3574,7 +3583,7 @@ export default function Gifts() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="rejectReason">Rejection Reason</Label>
+              <Label htmlFor="rejectReason">Rejection Reason<span className="text-red-500">*</span></Label>
               <Textarea id="rejectReason" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Enter the reason for rejection..." rows={4} />
             </div>
             <div className="flex justify-end space-x-2">
@@ -3660,7 +3669,7 @@ export default function Gifts() {
                         variant="outline"
                         className="absolute top-2 right-2 bg-white/90 hover:bg-white"
                         onClick={() => {
-                          const downloadUrl = getImageDownloadUrl(selectedGift.mktProof)
+                          const downloadUrl = getImageDownloadUrl(selectedGift.mktProof || null)
                           if (downloadUrl) {
                             window.open(downloadUrl, '_blank')
                           }
@@ -3721,15 +3730,18 @@ export default function Gifts() {
                   <div className="relative">
                     <img src={kamProofForm.existingKamProofUrl} alt="Existing KAM proof" className="max-w-full h-auto max-h-32 rounded border" />
                     {/* Download button */}
-                    {selectedGift?.kamProof && (
+                    {kamProofGiftId && (
                       <Button
                         size="sm"
                         variant="outline"
                         className="absolute top-2 right-2 bg-white/90 hover:bg-white"
                         onClick={() => {
-                          const downloadUrl = getImageDownloadUrl(selectedGift.kamProof)
-                          if (downloadUrl) {
-                            window.open(downloadUrl, '_blank')
+                          const currentGift = gifts.find(g => g.giftId === kamProofGiftId)
+                          if (currentGift?.kamProof) {
+                            const downloadUrl = getImageDownloadUrl(currentGift.kamProof || null)
+                            if (downloadUrl) {
+                              window.open(downloadUrl, '_blank')
+                            }
                           }
                         }}
                       >

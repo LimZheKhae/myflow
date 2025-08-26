@@ -41,6 +41,13 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
     // Subscribe to notifications
     const unsubscribe = NotificationService.getUserNotifications(user.id, user.role, (notifications) => {
+      console.log('🔔 [CONTEXT] Received notifications in context:', notifications.length)
+      console.log('🔔 [CONTEXT] Notifications:', notifications.map(n => ({
+        id: n.id,
+        title: n.title,
+        read: n.read,
+        type: n.type
+      })))
       setNotifications(notifications)
     })
 
@@ -65,6 +72,15 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   }
 
   const unreadCount = notifications.filter((n) => !n.read).length
+
+  // Debug logging for unread count
+  React.useEffect(() => {
+    console.log('🔔 [CONTEXT] Notifications state updated:', {
+      totalNotifications: notifications.length,
+      unreadCount,
+      notificationIds: notifications.map(n => n.id)
+    })
+  }, [notifications, unreadCount])
 
   return (
     <NotificationContext.Provider

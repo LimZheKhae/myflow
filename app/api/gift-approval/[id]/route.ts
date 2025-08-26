@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
-import { GiftRequestDetails, WorkflowStatus, TrackingStatus } from '@/types/gift'
+import { GiftRequestDetails, GiftRequestDetailsTable, WorkflowStatus, TrackingStatus } from '@/types/gift'
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     }
 
     const row = rows[0]
-    const gift: GiftRequestDetails = {
+    const gift: GiftRequestDetailsTable = {
       giftId: row.GIFT_ID,
       memberId: row.MEMBER_ID?.toString() || null,
       kamRequestedBy: row.KAM_REQUESTED_BY,

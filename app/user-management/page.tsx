@@ -27,10 +27,10 @@ import { format } from "date-fns"
 
 // Global activity logging function - uses server-side API to avoid ad blocker issues
 const logActivity = async (
-  action: string, 
-  userId: string, 
+  action: string,
+  userId: string,
   userName: string,
-  userEmail: string, 
+  userEmail: string,
   details: Record<string, any>
 ) => {
   try {
@@ -75,15 +75,15 @@ const CURRENCIES = ['USD', 'EUR', 'GBP', 'MYR', 'SGD', 'IDR', 'THB', 'PHP', 'INT
 // Available departments
 const DEPARTMENTS = ['KAM', 'MktOps', 'SalesOps', 'Audit', 'DSA']
 
-// Available roles for user creation
+// Available roles for user creation (all uppercase to match system expectations)
 const ROLES = [
-  'Agent (CA/CC/KAM)',
-  'TL', 
-  'Manager',
+  'AGENT (CA/CC/KAM)',
+  'TL',
+  'MANAGER',
   'QA',
-  'MKTops',
-  'Audit',
-  'Admin'
+  'MKTOPS',
+  'AUDIT',
+  'ADMIN'
 ]
 
 export default function UserManagementPage() {
@@ -155,15 +155,16 @@ export default function UserManagementPage() {
   }, {} as Record<string, FirebaseUser[]>)
 
   // Filter users based on search and selected department
-  const filteredUsers = selectedDepartment 
+  const filteredUsers = selectedDepartment
     ? (usersByDepartment[selectedDepartment] || []).filter((u) =>
-        u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchTerm.toLowerCase())
+    )
     : []
 
   const getRoleColor = (role: UserRole) => {
-    switch (role) {
+    const roleUpper = role.toUpperCase()
+    switch (roleUpper) {
       case "ADMIN":
         return "bg-purple-100 text-purple-800"
       case "MANAGER":
@@ -174,6 +175,14 @@ export default function UserManagementPage() {
         return "bg-orange-100 text-orange-800"
       case "AUDIT":
         return "bg-gray-100 text-gray-800"
+      case "MKTOPS":
+        return "bg-indigo-100 text-indigo-800"
+      case "QA":
+        return "bg-yellow-100 text-yellow-800"
+      case "TL":
+        return "bg-teal-100 text-teal-800"
+      case "AGENT (CA/CC/KAM)":
+        return "bg-pink-100 text-pink-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
@@ -193,6 +202,7 @@ export default function UserManagementPage() {
 
       const createdUserId = await FirebaseAuthService.createUser({
         ...newUser,
+        role: newUser.role.toUpperCase() as UserRole, // Ensure role is uppercase
         additionalData: {
           maskPersonalInfo: newUser.maskPersonalInfo,
           canLogin: newUser.canLogin
@@ -219,7 +229,7 @@ export default function UserManagementPage() {
         // Don't fail the entire operation if Snowflake sync fails
       }
 
-        toast.success("User created successfully")
+      toast.success("User created successfully")
       setIsCreateDialogOpen(false)
       resetForm()
       fetchUsers() // Refresh the list
@@ -306,7 +316,7 @@ export default function UserManagementPage() {
     try {
       // Get user details before deletion for logging
       const userToDelete = users.find(u => u.id === userId)
-      
+
       // Also delete user from Snowflake SYS_USER_INFO table
       try {
         await fetch(`/api/user-management/snowflake?userId=${userId}`, {
@@ -347,7 +357,7 @@ export default function UserManagementPage() {
       name: user.name,
       email: user.email,
       password: "", // Don't pre-fill password for security
-      role: user.role,
+      role: user.role.toUpperCase() as UserRole, // Ensure role is uppercase
       merchants: user.merchants,
       currencies: user.currencies,
       memberAccess: user.memberAccess,
@@ -368,7 +378,7 @@ export default function UserManagementPage() {
       // Update user data
       await FirebaseAuthService.updateUserData(editingUser.id, {
         name: newUser.name,
-        role: newUser.role,
+        role: newUser.role.toUpperCase() as UserRole, // Ensure role is uppercase
         merchants: newUser.merchants,
         currencies: newUser.currencies,
         memberAccess: newUser.memberAccess,
@@ -459,7 +469,7 @@ export default function UserManagementPage() {
       name: "",
       email: "",
       password: "",
-      role: "KAM",
+      role: "KAM" as UserRole, // Already uppercase
       merchants: [],
       currencies: [],
       memberAccess: [],
@@ -561,8 +571,8 @@ export default function UserManagementPage() {
                           <div className="space-y-4">
                             <div>
                               <Label htmlFor="department">Department</Label>
-                              <Select 
-                                value={newUser.department} 
+                              <Select
+                                value={newUser.department}
                                 onValueChange={(value) => setNewUser({ ...newUser, department: value })}
                               >
                                 <SelectTrigger>
@@ -635,9 +645,9 @@ export default function UserManagementPage() {
                             </div>
                             <div>
                               <Label htmlFor="role">Role</Label>
-                              <Select 
+                              <Select
                                 value={newUser.role}
-                                onValueChange={(value) => setNewUser({ ...newUser, role: value as UserRole })}
+                                onValueChange={(value) => setNewUser({ ...newUser, role: value.toUpperCase() as UserRole })}
                               >
                                 <SelectTrigger>
                                   <SelectValue placeholder="Select role" />
@@ -653,7 +663,7 @@ export default function UserManagementPage() {
                             </div>
                             <div>
                               <Label htmlFor="memberData">View Member Data</Label>
-                              <Select 
+                              <Select
                                 value={newUser.memberAccess.length === 2 ? "all" : newUser.memberAccess[0] || "normal"}
                                 onValueChange={(value) => {
                                   if (value === "all") {
@@ -703,7 +713,7 @@ export default function UserManagementPage() {
                                     <td key={permission} className="text-center p-2 sm:p-3">
                                       <Checkbox
                                         checked={hasModulePermission(module.id, permission)}
-                                        onCheckedChange={(checked) => 
+                                        onCheckedChange={(checked) =>
                                           updateModulePermission(module.id, permission, checked as boolean)
                                         }
                                       />
@@ -731,14 +741,14 @@ export default function UserManagementPage() {
                                     checked={newUser.merchants.includes(merchant)}
                                     onCheckedChange={(checked) => {
                                       if (checked) {
-                                        setNewUser({ 
-                                          ...newUser, 
-                                          merchants: [...newUser.merchants, merchant] 
+                                        setNewUser({
+                                          ...newUser,
+                                          merchants: [...newUser.merchants, merchant]
                                         })
                                       } else {
-                                        setNewUser({ 
-                                          ...newUser, 
-                                          merchants: newUser.merchants.filter(m => m !== merchant) 
+                                        setNewUser({
+                                          ...newUser,
+                                          merchants: newUser.merchants.filter(m => m !== merchant)
                                         })
                                       }
                                     }}
@@ -761,14 +771,14 @@ export default function UserManagementPage() {
                                     checked={newUser.currencies.includes(currency)}
                                     onCheckedChange={(checked) => {
                                       if (checked) {
-                                        setNewUser({ 
-                                          ...newUser, 
-                                          currencies: [...newUser.currencies, currency] 
+                                        setNewUser({
+                                          ...newUser,
+                                          currencies: [...newUser.currencies, currency]
                                         })
                                       } else {
-                                        setNewUser({ 
-                                          ...newUser, 
-                                          currencies: newUser.currencies.filter(c => c !== currency) 
+                                        setNewUser({
+                                          ...newUser,
+                                          currencies: newUser.currencies.filter(c => c !== currency)
                                         })
                                       }
                                     }}
@@ -806,8 +816,8 @@ export default function UserManagementPage() {
             <div>
               {/* Department Header */}
               <div className="flex items-center gap-3 mb-4">
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   onClick={() => setSelectedDepartment(null)}
                   className="text-gray-600 hover:text-gray-800"
                 >
@@ -836,11 +846,11 @@ export default function UserManagementPage() {
                           <div>
                             <div className="flex items-center gap-2">
                               <h3 className="font-medium text-gray-900">{u.name}</h3>
-                              <Badge 
-                                variant="outline" 
+                              <Badge
+                                variant="outline"
                                 className={`text-xs ${getRoleColor(u.role)}`}
                               >
-                                {u.role}
+                                {u.role.toUpperCase()}
                               </Badge>
                             </div>
                             <p className="text-sm text-gray-600">{u.email}</p>
@@ -860,8 +870,8 @@ export default function UserManagementPage() {
                           {/* Actions */}
                           <div className="flex items-center gap-1">
                             <PermissionGuard module="user-management" permission="EDIT">
-                              <Button 
-                                variant="ghost" 
+                              <Button
+                                variant="ghost"
                                 size="sm"
                                 onClick={() => handleEditUser(u)}
                                 className="h-8 w-8 p-0 hover:bg-gray-100"
@@ -869,18 +879,18 @@ export default function UserManagementPage() {
                                 <Edit className="h-4 w-4 text-gray-600" />
                               </Button>
                             </PermissionGuard>
-                            
+
                             <PermissionGuard module="user-management" permission="EDIT">
-                              <Switch 
-                                checked={u.isActive} 
+                              <Switch
+                                checked={u.isActive}
                                 onCheckedChange={() => handleToggleStatus(u.id, u.isActive)}
                                 className="scale-75"
                               />
                             </PermissionGuard>
-                            
+
                             <PermissionGuard module="user-management" permission="DELETE">
-                              <Button 
-                                variant="ghost" 
+                              <Button
+                                variant="ghost"
                                 size="sm"
                                 onClick={() => handleDeleteUser(u.id)}
                                 className="h-8 w-8 p-0 hover:bg-red-50"
@@ -901,7 +911,7 @@ export default function UserManagementPage() {
                       <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                       <h3 className="text-lg font-semibold text-gray-600 mb-2">No users found</h3>
                       <p className="text-gray-500">
-                        {searchTerm 
+                        {searchTerm
                           ? "Try adjusting your search terms"
                           : `No users in ${selectedDepartment} department yet`}
                       </p>
@@ -923,10 +933,10 @@ export default function UserManagementPage() {
                 {DEPARTMENTS.map((dept) => {
                   const deptUsers = usersByDepartment[dept] || []
                   const activeUsers = deptUsers.filter(u => u.isActive).length
-                  
+
                   return (
-                    <Card 
-                      key={dept} 
+                    <Card
+                      key={dept}
                       className="cursor-pointer border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all duration-200"
                       onClick={() => setSelectedDepartment(dept)}
                     >
@@ -941,7 +951,7 @@ export default function UserManagementPage() {
                             {deptUsers.length} users
                           </Badge>
                         </div>
-                        
+
                         <h3 className="font-semibold text-gray-900 mb-2">{dept}</h3>
                         <div className="flex items-center gap-4 text-sm text-gray-600">
                           <span className="flex items-center gap-1">
@@ -960,7 +970,7 @@ export default function UserManagementPage() {
 
                 {/* Unassigned Users */}
                 {usersByDepartment['Unassigned'] && usersByDepartment['Unassigned'].length > 0 && (
-                  <Card 
+                  <Card
                     className="cursor-pointer border border-gray-200 hover:border-yellow-300 hover:shadow-md transition-all duration-200"
                     onClick={() => setSelectedDepartment('Unassigned')}
                   >
@@ -973,7 +983,7 @@ export default function UserManagementPage() {
                           {usersByDepartment['Unassigned'].length} users
                         </Badge>
                       </div>
-                      
+
                       <h3 className="font-semibold text-gray-900 mb-2">Unassigned</h3>
                       <p className="text-sm text-gray-600">Users without department</p>
                     </CardContent>

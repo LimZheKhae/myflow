@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user has KAM or Admin role
     if (!['KAM', 'ADMIN'].includes(userRole)) {
+      console.log('❌ [PERMISSION VALIDATION] User role not allowed for create gift request', userRole)
       return NextResponse.json(
         {
           success: false,
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user has ADD permission for gift-approval module
     if (!userPermissions || !userPermissions['gift-approval'] || !userPermissions['gift-approval'].includes('ADD')) {
+      console.log('❌ [PERMISSION VALIDATION] User does not have ADD permission for gift-approval module', userPermissions)
       return NextResponse.json(
         {
           success: false,

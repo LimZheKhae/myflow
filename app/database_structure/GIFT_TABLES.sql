@@ -150,7 +150,7 @@ create or replace TABLE MY_FLOW.PUBLIC.GIFT_WORKFLOW_TIMELINE (
 	primary key (ID)
 );
 -- Gift Workflow Timeline View
-create or replace view MY_FLOW.PRESENTATION.VIEW_GIF_WORKFLOW_TIMELINE(
+create or replace view MY_FLOW.PRESENTATION.VIEW_GIFT_WORKFLOW_TIMELINE(
 	WORKFLOW_ID,
 	GIFT_ID,
 	TIMELINE_TITLE,

@@ -22,26 +22,67 @@ export class NotificationService {
 
   // Get user notifications with real-time updates
   static getUserNotifications(userId: string, userRole: string, callback?: (notifications: Notification[]) => void) {
+    console.log('🔔 [FRONTEND] Getting notifications for user:', { userId, userRole })
+    
     // Temporary: Remove the where clause to avoid index requirement
     const q = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'))
 
     return onSnapshot(q, (snapshot) => {
-      const notifications = snapshot.docs
-        .map((doc) => {
-          const data = doc.data()
-          return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate(),
-            readAt: data.readAt?.toDate(),
-            expiresAt: data.expiresAt?.toDate(),
-          } as Notification
+      console.log('🔔 [FRONTEND] Firebase snapshot received:', snapshot.docs.length, 'documents')
+      
+      const allNotifications = snapshot.docs.map((doc) => {
+        const data = doc.data()
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate(),
+          readAt: data.readAt?.toDate(),
+          expiresAt: data.expiresAt?.toDate(),
+        } as Notification
+      })
+      
+      console.log('🔔 [FRONTEND] All notifications before filtering:', 
+        allNotifications.map(n => ({
+          id: n.id,
+          title: n.title,
+          read: n.read,
+          userId: n.userId,
+          targetUserIds: n.targetUserIds,
+          roles: n.roles,
+          type: n.type
+        }))
+      )
+
+      const notifications = allNotifications.filter((notification) => {
+        // Check each condition separately for debugging
+        const isUnread = !notification.read
+        const isForUser = notification.userId === userId
+        const isGlobal = notification.userId === null
+        const isTargeted = notification.targetUserIds && notification.targetUserIds.includes(userId)
+        const isRoleBased = notification.roles && notification.roles.includes(userRole)
+        const isGlobalRole = notification.roles && notification.roles.length === 0
+        
+        const shouldShow = isUnread && (isForUser || isGlobal || isTargeted || isRoleBased || isGlobalRole)
+        
+        console.log(`🔔 [FRONTEND] Notification ${notification.id} (${notification.title}):`, {
+          isUnread,
+          isForUser,
+          isGlobal,
+          isTargeted,
+          isRoleBased,
+          isGlobalRole,
+          shouldShow,
+          userRole,
+          notificationRoles: notification.roles,
+          notificationUserId: notification.userId,
+          notificationTargetUserIds: notification.targetUserIds,
+          currentUserId: userId
         })
-        .filter(
-          (notification) =>
-            // Filter for unread notifications and user access
-            !notification.read && (notification.userId === userId || notification.userId === null || (notification.targetUserIds && notification.targetUserIds.includes(userId)) || (notification.roles && notification.roles.includes(userRole)) || (notification.roles && notification.roles.length === 0))
-        )
+        
+        return shouldShow
+      })
+      
+      console.log('🔔 [FRONTEND] Filtered notifications:', notifications.length, 'notifications')
 
       if (callback) {
         callback(notifications)
