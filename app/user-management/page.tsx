@@ -7,14 +7,14 @@ import FirebaseLoginForm from "@/components/auth/firebase-login-form"
 import Sidebar from "@/components/layout/sidebar"
 import Header from "@/components/layout/header"
 import PermissionGuard from "@/components/common/permission-guard"
-import { Loader2 } from "lucide-react"
+import { Loader2, Check, X, ChevronRight, Users, UserPlus, Mail, Phone, MapPin, Settings, Shield, Globe, CreditCard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Search, Plus, Edit, Trash2, Shield, Users, UserPlus, Mail, Phone, MapPin, Settings } from "lucide-react"
+import { Search, Plus, Edit, Trash2 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -57,10 +57,10 @@ const logActivity = async (
 
 // Available modules for permission settings (only actual application modules)
 const MODULES = [
-  { id: 'vip-profile', name: 'VIP Profile' },
-  { id: 'campaign', name: 'Campaign' },
-  { id: 'gift-approval', name: 'Gift Approval' },
-  { id: 'user-management', name: 'User Management' }
+  { id: 'vip-profile', name: 'VIP Profile', icon: Users },
+  { id: 'campaign', name: 'Campaign', icon: Globe },
+  { id: 'gift-approval', name: 'Gift Approval', icon: CreditCard },
+  { id: 'user-management', name: 'User Management', icon: Settings }
 ]
 
 // Available permissions for each module
@@ -75,9 +75,10 @@ const CURRENCIES = ['USD', 'EUR', 'GBP', 'MYR', 'SGD', 'IDR', 'THB', 'PHP', 'INT
 // Available departments
 const DEPARTMENTS = ['KAM', 'MktOps', 'SalesOps', 'Audit', 'DSA']
 
-// Available roles for user creation (all uppercase to match system expectations)
+// Available roles for user creation (corrected roles)
 const ROLES = [
-  'AGENT (CA/CC/KAM)',
+  'CC/CA',
+  'KAM',
   'TL',
   'MANAGER',
   'QA',
@@ -94,6 +95,7 @@ export default function UserManagementPage() {
   const [loading, setLoading] = useState(true)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<FirebaseUser | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const { user, loading: authLoading } = useAuth()
 
   // New user form state
@@ -108,7 +110,6 @@ export default function UserManagementPage() {
     department: "",
     region: "",
     permissions: {} as Record<string, Permission[]>,
-    maskPersonalInfo: false,
     canLogin: true,
     isActive: true
   })
@@ -171,8 +172,8 @@ export default function UserManagementPage() {
         return "bg-blue-100 text-blue-800"
       case "KAM":
         return "bg-green-100 text-green-800"
-      case "PROCUREMENT":
-        return "bg-orange-100 text-orange-800"
+      case "CC/CA":
+        return "bg-pink-100 text-pink-800"
       case "AUDIT":
         return "bg-gray-100 text-gray-800"
       case "MKTOPS":
@@ -181,15 +182,17 @@ export default function UserManagementPage() {
         return "bg-yellow-100 text-yellow-800"
       case "TL":
         return "bg-teal-100 text-teal-800"
-      case "AGENT (CA/CC/KAM)":
-        return "bg-pink-100 text-pink-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
   }
 
   const handleCreateUser = async () => {
+    if (isSubmitting) return
+
     try {
+      setIsSubmitting(true)
+
       if (!newUser.name || !newUser.email || !newUser.password) {
         toast.error("Name, email, and password are required")
         return
@@ -203,8 +206,8 @@ export default function UserManagementPage() {
       const createdUserId = await FirebaseAuthService.createUser({
         ...newUser,
         role: newUser.role.toUpperCase() as UserRole, // Ensure role is uppercase
+        memberAccess: newUser.memberAccess,
         additionalData: {
-          maskPersonalInfo: newUser.maskPersonalInfo,
           canLogin: newUser.canLogin
         }
       })
@@ -249,15 +252,15 @@ export default function UserManagementPage() {
           permissions: newUser.permissions,
           merchants: newUser.merchants,
           currencies: newUser.currencies,
-          memberAccess: newUser.memberAccess,
           canLogin: newUser.canLogin,
           isActive: newUser.isActive,
-          maskPersonalInfo: newUser.maskPersonalInfo,
           remark: `User created: ${newUser.name} (${newUser.email}) with role ${newUser.role}`
         }
       )
     } catch (error: any) {
       toast.error(error.message || "Failed to create user")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -364,7 +367,6 @@ export default function UserManagementPage() {
       department: user.department || "",
       region: user.region || "",
       permissions: user.permissions,
-      maskPersonalInfo: user.additionalData?.maskPersonalInfo || false,
       canLogin: user.additionalData?.canLogin !== false,
       isActive: user.isActive
     })
@@ -372,9 +374,11 @@ export default function UserManagementPage() {
   }
 
   const handleUpdateUser = async () => {
-    if (!editingUser) return
+    if (!editingUser || isSubmitting) return
 
     try {
+      setIsSubmitting(true)
+
       // Update user data
       await FirebaseAuthService.updateUserData(editingUser.id, {
         name: newUser.name,
@@ -388,7 +392,6 @@ export default function UserManagementPage() {
         isActive: newUser.isActive,
         additionalData: {
           ...editingUser.additionalData,
-          maskPersonalInfo: newUser.maskPersonalInfo,
           canLogin: newUser.canLogin
         }
       }, user?.id)
@@ -447,20 +450,18 @@ export default function UserManagementPage() {
           newMerchants: newUser.merchants,
           previousCurrencies: editingUser.currencies,
           newCurrencies: newUser.currencies,
-          previousMemberAccess: editingUser.memberAccess,
-          newMemberAccess: newUser.memberAccess,
           previousIsActive: editingUser.isActive,
           newIsActive: newUser.isActive,
           previousCanLogin: editingUser.additionalData?.canLogin,
           newCanLogin: newUser.canLogin,
-          previousMaskPersonalInfo: editingUser.additionalData?.maskPersonalInfo,
-          newMaskPersonalInfo: newUser.maskPersonalInfo,
           passwordChanged: newUser.password && newUser.password.length >= 6,
           remark: `User updated: ${editingUser.name} (${editingUser.email})`
         }
       )
     } catch (error: any) {
       toast.error(error.message || "Failed to update user")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -476,7 +477,6 @@ export default function UserManagementPage() {
       department: "",
       region: "",
       permissions: {},
-      maskPersonalInfo: false,
       canLogin: true,
       isActive: true
     })
@@ -513,6 +513,57 @@ export default function UserManagementPage() {
     return (newUser.permissions[moduleId] || []).includes(permission)
   }
 
+  // Select All / Disable All functions for permissions
+  const handleSelectAllPermissions = (moduleId: string) => {
+    setNewUser({
+      ...newUser,
+      permissions: {
+        ...newUser.permissions,
+        [moduleId]: [...PERMISSIONS]
+      }
+    })
+  }
+
+  const handleDisableAllPermissions = (moduleId: string) => {
+    setNewUser({
+      ...newUser,
+      permissions: {
+        ...newUser.permissions,
+        [moduleId]: []
+      }
+    })
+  }
+
+  // Select All / Disable All functions for merchants
+  const handleSelectAllMerchants = () => {
+    setNewUser({
+      ...newUser,
+      merchants: [...MERCHANTS]
+    })
+  }
+
+  const handleDisableAllMerchants = () => {
+    setNewUser({
+      ...newUser,
+      merchants: []
+    })
+  }
+
+  // Select All / Disable All functions for currencies
+  const handleSelectAllCurrencies = () => {
+    setNewUser({
+      ...newUser,
+      currencies: [...CURRENCIES]
+    })
+  }
+
+  const handleDisableAllCurrencies = () => {
+    setNewUser({
+      ...newUser,
+      currencies: []
+    })
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
@@ -541,41 +592,94 @@ export default function UserManagementPage() {
                   <Button onClick={() => {
                     setEditingUser(null)
                     resetForm()
-                  }} className="bg-blue-600 hover:bg-blue-700">
+                  }} className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-lg">
                     <UserPlus className="mr-2 h-4 w-4" />
                     Add User
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-[95vw] md:max-w-6xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <Settings className="h-5 w-5" />
+                  <DialogHeader className="space-y-4">
+                    <DialogTitle className="flex items-center gap-3 text-2xl font-bold">
+                      <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg">
+                        <Settings className="h-6 w-6 text-white" />
+                      </div>
                       {editingUser ? 'Edit User Permissions' : 'Create New User'}
                     </DialogTitle>
-                    <DialogDescription>
+                    <DialogDescription className="text-gray-600 text-base">
                       {editingUser ? 'Update user information and comprehensive permission settings.' : 'Add a new user with detailed role and permission configuration.'}
                     </DialogDescription>
                   </DialogHeader>
 
                   <Tabs defaultValue="basic" className="w-full">
-                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
-                      <TabsTrigger value="basic" className="text-xs sm:text-sm">User Settings</TabsTrigger>
-                      <TabsTrigger value="permissions" className="text-xs sm:text-sm">Authority Settings</TabsTrigger>
-                      <TabsTrigger value="access" className="text-xs sm:text-sm">Projects & Currency</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 bg-gray-100 p-1 rounded-lg">
+                      <TabsTrigger value="basic" className="flex items-center gap-2 text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md transition-all">
+                        <Users className="h-4 w-4" />
+                        User Settings
+                      </TabsTrigger>
+                      <TabsTrigger value="permissions" className="flex items-center gap-2 text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md transition-all">
+                        <Shield className="h-4 w-4" />
+                        Authority Settings
+                      </TabsTrigger>
+                      <TabsTrigger value="access" className="flex items-center gap-2 text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md transition-all">
+                        <Globe className="h-4 w-4" />
+                        Projects & Currency
+                      </TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value="basic" className="space-y-6">
-                      <div className="bg-orange-100 p-4 rounded-lg">
-                        <h3 className="font-semibold text-orange-800 mb-4">User Settings</h3>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+                    <TabsContent value="basic" className="space-y-6 mt-6">
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-200">
+                        <div className="flex items-center gap-3 mb-6">
+                          <div className="p-2 bg-blue-500 rounded-lg">
+                            <Users className="h-5 w-5 text-white" />
+                          </div>
+                          <h3 className="text-xl font-semibold text-blue-900">User Information</h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                           <div className="space-y-4">
                             <div>
-                              <Label htmlFor="department">Department</Label>
+                              <Label htmlFor="name" className="text-sm font-medium text-gray-700 mb-2 block">Full Name</Label>
+                              <Input
+                                id="name"
+                                value={newUser.name}
+                                onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                                placeholder="Enter full name"
+                                className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="email" className="text-sm font-medium text-gray-700 mb-2 block">Email Address</Label>
+                              <Input
+                                id="email"
+                                type="email"
+                                value={newUser.email}
+                                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                                placeholder="Enter email address"
+                                disabled={!!editingUser}
+                                className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="password" className="text-sm font-medium text-gray-700 mb-2 block">Password</Label>
+                              <Input
+                                id="password"
+                                type="password"
+                                value={newUser.password}
+                                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                                placeholder={editingUser ? "Leave blank to keep current password" : "Enter password (min 6 characters)"}
+                                className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <div>
+                              <Label htmlFor="department" className="text-sm font-medium text-gray-700 mb-2 block">Department</Label>
                               <Select
                                 value={newUser.department}
                                 onValueChange={(value) => setNewUser({ ...newUser, department: value })}
                               >
-                                <SelectTrigger>
+                                <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
                                   <SelectValue placeholder="Select department" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -587,69 +691,13 @@ export default function UserManagementPage() {
                                 </SelectContent>
                               </Select>
                             </div>
-                            <div className="flex items-center space-x-2">
-                              <Switch
-                                id="canLogin"
-                                checked={newUser.canLogin}
-                                onCheckedChange={(checked) => setNewUser({ ...newUser, canLogin: checked })}
-                              />
-                              <Label htmlFor="canLogin">Login</Label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Switch
-                                id="isActive"
-                                checked={newUser.isActive}
-                                onCheckedChange={(checked) => setNewUser({ ...newUser, isActive: checked })}
-                              />
-                              <Label htmlFor="isActive">Status</Label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Switch
-                                id="maskPersonalInfo"
-                                checked={newUser.maskPersonalInfo}
-                                onCheckedChange={(checked) => setNewUser({ ...newUser, maskPersonalInfo: checked })}
-                              />
-                              <Label htmlFor="maskPersonalInfo">Masking personal info (YES/NO)</Label>
-                            </div>
-                          </div>
-                          <div className="space-y-4">
                             <div>
-                              <Label htmlFor="name">Name</Label>
-                              <Input
-                                id="name"
-                                value={newUser.name}
-                                onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                                placeholder="Enter full name"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="email">Email</Label>
-                              <Input
-                                id="email"
-                                type="email"
-                                value={newUser.email}
-                                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                                placeholder="Enter email address"
-                                disabled={!!editingUser}
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="password">Password</Label>
-                              <Input
-                                id="password"
-                                type="password"
-                                value={newUser.password}
-                                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                                placeholder={editingUser ? "Leave blank to keep current password" : "Enter password (min 6 characters)"}
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="role">Role</Label>
+                              <Label htmlFor="role" className="text-sm font-medium text-gray-700 mb-2 block">Role</Label>
                               <Select
                                 value={newUser.role}
                                 onValueChange={(value) => setNewUser({ ...newUser, role: value.toUpperCase() as UserRole })}
                               >
-                                <SelectTrigger>
+                                <SelectTrigger className="h-11 border-gray-300 focus:border-blue-500 focus:ring-blue-500">
                                   <SelectValue placeholder="Select role" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -661,64 +709,91 @@ export default function UserManagementPage() {
                                 </SelectContent>
                               </Select>
                             </div>
-                            <div>
-                              <Label htmlFor="memberData">View Member Data</Label>
-                              <Select
-                                value={newUser.memberAccess.length === 2 ? "all" : newUser.memberAccess[0] || "normal"}
-                                onValueChange={(value) => {
-                                  if (value === "all") {
-                                    setNewUser({ ...newUser, memberAccess: ["NORMAL", "VIP"] })
-                                  } else if (value === "vip") {
-                                    setNewUser({ ...newUser, memberAccess: ["VIP"] })
-                                  } else {
-                                    setNewUser({ ...newUser, memberAccess: ["NORMAL"] })
-                                  }
-                                }}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="all">All, Normal Only, VIP only</SelectItem>
-                                  <SelectItem value="normal">Normal Only</SelectItem>
-                                  <SelectItem value="vip">VIP only</SelectItem>
-                                </SelectContent>
-                              </Select>
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <Label htmlFor="canLogin" className="text-sm font-medium text-gray-700">Login Access</Label>
+                                <Switch
+                                  id="canLogin"
+                                  checked={newUser.canLogin}
+                                  onCheckedChange={(checked) => setNewUser({ ...newUser, canLogin: checked })}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <Label htmlFor="isActive" className="text-sm font-medium text-gray-700">Active Status</Label>
+                                <Switch
+                                  id="isActive"
+                                  checked={newUser.isActive}
+                                  onCheckedChange={(checked) => setNewUser({ ...newUser, isActive: checked })}
+                                />
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
                     </TabsContent>
 
-                    <TabsContent value="permissions" className="space-y-6">
-                      <div className="bg-orange-100 p-4 rounded-lg">
-                        <h3 className="font-semibold text-orange-800 mb-4">Authority Settings</h3>
+                    <TabsContent value="permissions" className="space-y-6 mt-6">
+                      <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-6 rounded-xl border border-purple-200">
+                        <div className="flex items-center gap-3 mb-6">
+                          <div className="p-2 bg-purple-500 rounded-lg">
+                            <Shield className="h-5 w-5 text-white" />
+                          </div>
+                          <h3 className="text-xl font-semibold text-purple-900">Authority Settings</h3>
+                        </div>
+
                         <div className="overflow-x-auto">
-                          <table className="w-full border-collapse min-w-[600px]">
+                          <table className="w-full border-collapse min-w-[600px] bg-white rounded-lg shadow-sm">
                             <thead>
-                              <tr>
-                                <th className="text-left p-2 sm:p-3 font-medium border-b text-xs sm:text-sm">Module Name</th>
+                              <tr className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+                                <th className="text-left p-4 font-semibold">Module Name</th>
                                 {PERMISSIONS.map(permission => (
-                                  <th key={permission} className="text-center p-2 sm:p-3 font-medium border-b min-w-[60px] sm:min-w-[80px] text-xs sm:text-sm">
+                                  <th key={permission} className="text-center p-4 font-semibold min-w-[80px]">
                                     {permission}
                                   </th>
                                 ))}
+                                <th className="text-center p-4 font-semibold min-w-[120px]">Actions</th>
                               </tr>
                             </thead>
                             <tbody>
                               {MODULES.map(module => (
-                                <tr key={module.id} className="border-b">
-                                  <td className="p-2 sm:p-3 font-medium text-xs sm:text-sm">{module.name}</td>
+                                <tr key={module.id} className="border-b border-gray-200 hover:bg-gray-50">
+                                  <td className="p-4 font-medium flex items-center gap-2">
+                                    <module.icon className="h-4 w-4 text-gray-500" />
+                                    {module.name}
+                                  </td>
                                   {PERMISSIONS.map(permission => (
-                                    <td key={permission} className="text-center p-2 sm:p-3">
+                                    <td key={permission} className="text-center p-4">
                                       <Checkbox
                                         checked={hasModulePermission(module.id, permission)}
                                         onCheckedChange={(checked) =>
                                           updateModulePermission(module.id, permission, checked as boolean)
                                         }
+                                        className="data-[state=checked]:bg-purple-500 data-[state=checked]:border-purple-500"
                                       />
                                     </td>
                                   ))}
+                                  <td className="text-center p-4">
+                                    <div className="flex gap-2 justify-center">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleSelectAllPermissions(module.id)}
+                                        className="h-8 px-2 text-xs border-green-500 text-green-600 hover:bg-green-50"
+                                      >
+                                        <Check className="h-3 w-3 mr-1" />
+                                        All
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleDisableAllPermissions(module.id)}
+                                        className="h-8 px-2 text-xs border-red-500 text-red-600 hover:bg-red-50"
+                                      >
+                                        <X className="h-3 w-3 mr-1" />
+                                        None
+                                      </Button>
+                                    </div>
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -727,13 +802,41 @@ export default function UserManagementPage() {
                       </div>
                     </TabsContent>
 
-                    <TabsContent value="access" className="space-y-6">
-                      <div className="bg-orange-100 p-4 rounded-lg">
-                        <h3 className="font-semibold text-orange-800 mb-4">Projects & Currency Settings</h3>
-                        <div className="space-y-6">
+                    <TabsContent value="access" className="space-y-6 mt-6">
+                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-6 rounded-xl border border-green-200">
+                        <div className="flex items-center gap-3 mb-6">
+                          <div className="p-2 bg-green-500 rounded-lg">
+                            <Globe className="h-5 w-5 text-white" />
+                          </div>
+                          <h3 className="text-xl font-semibold text-green-900">Projects & Currency Settings</h3>
+                        </div>
+
+                        <div className="space-y-8">
                           <div>
-                            <Label className="font-medium mb-3 block">Merchant</Label>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                            <div className="flex items-center justify-between mb-4">
+                              <Label className="text-lg font-semibold text-gray-800">Merchant Access</Label>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleSelectAllMerchants}
+                                  className="border-green-500 text-green-600 hover:bg-green-50"
+                                >
+                                  <Check className="h-4 w-4 mr-1" />
+                                  Select All
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleDisableAllMerchants}
+                                  className="border-red-500 text-red-600 hover:bg-red-50"
+                                >
+                                  <X className="h-4 w-4 mr-1" />
+                                  Disable All
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 bg-white p-4 rounded-lg border">
                               {MERCHANTS.map(merchant => (
                                 <div key={merchant} className="flex items-center space-x-2">
                                   <Checkbox
@@ -752,8 +855,9 @@ export default function UserManagementPage() {
                                         })
                                       }
                                     }}
+                                    className="data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                                   />
-                                  <Label htmlFor={`merchant-${merchant}`} className="text-sm">
+                                  <Label htmlFor={`merchant-${merchant}`} className="text-sm font-medium text-gray-700">
                                     {merchant}
                                   </Label>
                                 </div>
@@ -762,8 +866,30 @@ export default function UserManagementPage() {
                           </div>
 
                           <div>
-                            <Label className="font-medium mb-3 block">Currency</Label>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                            <div className="flex items-center justify-between mb-4">
+                              <Label className="text-lg font-semibold text-gray-800">Currency Access</Label>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleSelectAllCurrencies}
+                                  className="border-green-500 text-green-600 hover:bg-green-50"
+                                >
+                                  <Check className="h-4 w-4 mr-1" />
+                                  Select All
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleDisableAllCurrencies}
+                                  className="border-red-500 text-red-600 hover:bg-red-50"
+                                >
+                                  <X className="h-4 w-4 mr-1" />
+                                  Disable All
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 bg-white p-4 rounded-lg border">
                               {CURRENCIES.map(currency => (
                                 <div key={currency} className="flex items-center space-x-2">
                                   <Checkbox
@@ -782,8 +908,9 @@ export default function UserManagementPage() {
                                         })
                                       }
                                     }}
+                                    className="data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                                   />
-                                  <Label htmlFor={`currency-${currency}`} className="text-sm">
+                                  <Label htmlFor={`currency-${currency}`} className="text-sm font-medium text-gray-700">
                                     {currency}
                                   </Label>
                                 </div>
@@ -795,12 +922,28 @@ export default function UserManagementPage() {
                     </TabsContent>
                   </Tabs>
 
-                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-end mt-6 pt-4 border-t">
-                    <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)} className="w-full sm:w-auto">
-                      Reset
+                  <div className="flex flex-col sm:flex-row gap-4 justify-end mt-8 pt-6 border-t border-gray-200">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsCreateDialogOpen(false)}
+                      className="w-full sm:w-auto h-11 border-gray-300 hover:bg-gray-50"
+                      disabled={isSubmitting}
+                    >
+                      Cancel
                     </Button>
-                    <Button onClick={editingUser ? handleUpdateUser : handleCreateUser} className="w-full sm:w-auto">
-                      {editingUser ? 'Submit' : 'Submit'}
+                    <Button
+                      onClick={editingUser ? handleUpdateUser : handleCreateUser}
+                      className="w-full sm:w-auto h-11 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-lg"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          {editingUser ? 'Updating...' : 'Creating...'}
+                        </>
+                      ) : (
+                        editingUser ? 'Update User' : 'Create User'
+                      )}
                     </Button>
                   </div>
                 </DialogContent>
