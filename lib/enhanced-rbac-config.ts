@@ -1,4 +1,4 @@
-import type { RoleDefinition } from "@/types/rbac"
+import type { RoleDefinition } from "@/types/rbac";
 
 // Enhanced RBAC Configuration with granular permissions
 export const ENHANCED_RBAC_ROLES: RoleDefinition[] = [
@@ -18,7 +18,6 @@ export const ENHANCED_RBAC_ROLES: RoleDefinition[] = [
           { action: "DELETE", allowed: true },
           { action: "IMPORT", allowed: true },
           { action: "EXPORT", allowed: true },
-          { action: "ASSIGN", allowed: true },
         ],
         dataAccess: [
           { field: "personal_info", access: "FULL" },
@@ -54,7 +53,7 @@ export const ENHANCED_RBAC_ROLES: RoleDefinition[] = [
           { action: "EDIT", allowed: true },
           { action: "ADD", allowed: true },
           { action: "DELETE", allowed: true },
-          { action: "APPROVE", allowed: true },
+          { action: "IMPORT", allowed: true },
           { action: "EXPORT", allowed: true },
         ],
         dataAccess: [
@@ -139,7 +138,8 @@ export const ENHANCED_RBAC_ROLES: RoleDefinition[] = [
           { action: "VIEW", allowed: true },
           { action: "SEARCH", allowed: true },
           { action: "EDIT", allowed: true },
-          { action: "APPROVE", allowed: true },
+
+          { action: "IMPORT", allowed: true },
           { action: "EXPORT", allowed: true },
         ],
         dataAccess: [
@@ -187,7 +187,6 @@ export const ENHANCED_RBAC_ROLES: RoleDefinition[] = [
           { action: "SEARCH", allowed: true },
           { action: "EDIT", allowed: true },
           { action: "ADD", allowed: true },
-          { action: "CALL", allowed: true },
         ],
         dataAccess: [
           { field: "personal_info", access: "FULL" },
@@ -210,7 +209,6 @@ export const ENHANCED_RBAC_ROLES: RoleDefinition[] = [
           { action: "EDIT", allowed: true },
           { action: "ADD", allowed: true },
           { action: "DELETE", allowed: true, conditions: ["own_campaigns"] },
-          { action: "CALL", allowed: true },
         ],
         dataAccess: [
           { field: "campaign_data", access: "FULL", conditions: ["own_campaigns"] },
@@ -229,6 +227,7 @@ export const ENHANCED_RBAC_ROLES: RoleDefinition[] = [
           { action: "VIEW", allowed: true },
           { action: "SEARCH", allowed: true },
           { action: "ADD", allowed: true },
+          { action: "IMPORT", allowed: true },
         ],
         dataAccess: [
           { field: "gift_requests", access: "FULL", conditions: ["own_requests"] },
@@ -345,26 +344,26 @@ export const ENHANCED_RBAC_ROLES: RoleDefinition[] = [
     ],
     globalConditions: [],
   },
-]
+];
 
 // Permission matrix for quick lookups
 export const PERMISSION_MATRIX = {
   ADMIN: {
-    "vip-profile": ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "IMPORT", "EXPORT", "ASSIGN"],
+    "vip-profile": ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "IMPORT", "EXPORT"],
     campaign: ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "IMPORT", "EXPORT"],
-    "gift-approval": ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "APPROVE", "EXPORT"],
+    "gift-approval": ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "IMPORT", "EXPORT"],
     "user-management": ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "IMPORT", "EXPORT"],
   },
   MANAGER: {
     "vip-profile": ["VIEW", "SEARCH", "EXPORT"],
     campaign: ["VIEW", "SEARCH", "EDIT", "ADD", "EXPORT"],
-    "gift-approval": ["VIEW", "SEARCH", "EDIT", "APPROVE", "EXPORT"],
+    "gift-approval": ["VIEW", "SEARCH", "EDIT", "IMPORT", "EXPORT"],
     "user-management": ["VIEW", "SEARCH", "EDIT"],
   },
   KAM: {
-    "vip-profile": ["VIEW", "SEARCH", "EDIT", "ADD", "CALL"],
-    campaign: ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE", "CALL"],
-    "gift-approval": ["VIEW", "SEARCH", "ADD"],
+    "vip-profile": ["VIEW", "SEARCH", "EDIT", "ADD"],
+    campaign: ["VIEW", "SEARCH", "EDIT", "ADD", "DELETE"],
+    "gift-approval": ["VIEW", "SEARCH", "ADD", "IMPORT"],
   },
   PROCUREMENT: {
     "gift-approval": ["VIEW", "SEARCH", "EDIT"],
@@ -375,7 +374,7 @@ export const PERMISSION_MATRIX = {
     "gift-approval": ["VIEW", "SEARCH", "EXPORT"],
     "user-management": ["VIEW", "SEARCH", "EXPORT"],
   },
-}
+};
 
 // Data access matrix
 export const DATA_ACCESS_MATRIX = {
@@ -475,4 +474,4 @@ export const DATA_ACCESS_MATRIX = {
       audit_logs: "READ_ONLY",
     },
   },
-}
+};

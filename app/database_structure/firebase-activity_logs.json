@@ -1,0 +1,59 @@
+{
+    "action": "UPDATE_USER",
+    "createdAt": "2025-08-18T15:56:32+08:00",
+    "details": {
+    "additionalData": {
+        "canLogin":true,
+        "maskPersonalInfo":false
+    },
+    "canLogin": true,
+    "maskPersonalInfo": false,
+    "currencies": [
+      "IDR",
+      "Other2",
+      "SGD",
+      "Other1",
+      "Tesla",
+      "MYR",
+      "GBP",
+      "INT",
+      "PHP",
+      "EUR",
+      "USD",
+      "THB"
+    ],
+    "department": "DSA",
+    "isActive": true,
+    "memberAccess": [
+      "NORMAL",
+      "VIP"
+    ],
+    "merchants": [
+      "MERCHANT_A",
+      "Alpha",
+      "MERCHANT_B",
+      "Tesla",
+      "MERCHANT_C",
+      "Other1",
+      "Beta",
+      "Seed",
+      "Maple"
+    ],
+    "name": "testdsa",
+    "permissions": {
+      "campaign": ["VIEW"],
+      "gift-approval": ["VIEW"],
+      "user-management": [],
+      "vip-profile": ["VIEW"]
+    },
+    "region": "",
+    "role": "Admin"
+    },
+    "entityId": "L9XJT1XRWqUqxmqC2QUqff5xLPD2",
+    "entityType": "user",
+    "module": "user-management",
+    "updatedAt": "2025-08-18T15:56:32+08:00",
+    "userId": "jZhDYlNdd0WTl72sWpJJ79IhzCp2",
+    "userName": "admin"
+  }
+  

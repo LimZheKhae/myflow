@@ -35,7 +35,7 @@ export default function EnhancedPermissionGuard({
 
   if (!user) return <>{fallback}</>
 
-  const rbacManager = createEnhancedRBACManager(user as EnhancedUser)
+  const rbacManager = createEnhancedRBACManager(user as unknown as EnhancedUser)
 
   // Check basic permission
   if (!rbacManager.hasPermission(module, permission)) {

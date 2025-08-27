@@ -15,7 +15,7 @@ export class EnhancedRBACManager {
   hasPermission(module: string, action: Permission): boolean {
     if (this.user.role === "ADMIN") return true
 
-    const permissions = PERMISSION_MATRIX[this.user.role]?.[module] || []
+    const permissions = (PERMISSION_MATRIX as any)[this.user.role]?.[module] || []
     return permissions.includes(action)
   }
 
@@ -23,7 +23,7 @@ export class EnhancedRBACManager {
   canAccessDataField(module: string, field: string): "FULL" | "READ_ONLY" | "RESTRICTED" | "HIDDEN" {
     if (this.user.role === "ADMIN") return "FULL"
 
-    const dataAccess = DATA_ACCESS_MATRIX[this.user.role]?.[module]?.[field]
+    const dataAccess = (DATA_ACCESS_MATRIX as any)[this.user.role]?.[module]?.[field]
     return dataAccess || "HIDDEN"
   }
 

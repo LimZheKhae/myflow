@@ -1,5 +1,5 @@
 // Enhanced RBAC types with granular permissions
-import type { UserRole, User } from "./user" // Assuming UserRole and User are declared in another file
+import type { UserRole, User } from "./auth" // Assuming UserRole and User are declared in another file
 
 export type ModulePermission = {
   module: string

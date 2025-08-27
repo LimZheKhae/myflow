@@ -6,6 +6,8 @@
 # next.js
 /.next/
 /out/
+/kam-nexus/
+/database_structure/
 
 # production
 /build

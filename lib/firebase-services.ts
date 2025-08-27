@@ -660,6 +660,25 @@ export class ActivityLogService {
     }
   }
 
+  // Create activity log
+  static async createActivityLog(logData: Omit<FirebaseActivityLog, 'id' | 'createdAt' | 'updatedAt'>): Promise<{ success: boolean; logId?: string; error?: string }> {
+    try {
+      const docRef = doc(collection(db, this.COLLECTION))
+      const activityLog: FirebaseActivityLog = {
+        ...logData,
+        id: docRef.id,
+        createdAt: serverTimestamp() as Timestamp,
+        updatedAt: serverTimestamp() as Timestamp,
+      }
+
+      await setDoc(docRef, activityLog)
+      return { success: true, logId: docRef.id }
+    } catch (error: any) {
+      console.error('Error creating activity log:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
   // Get user activity summary
   static async getUserActivitySummary(userId: string, days: number = 30): Promise<Record<string, number>> {
     try {
@@ -685,6 +704,140 @@ export class ActivityLogService {
     } catch (error: any) {
       console.error('Error fetching user activity summary:', error)
       return {}
+    }
+  }
+
+  // Clear all activity logs (DANGEROUS - Use with caution!)
+  static async clearAllActivityLogs(): Promise<{ success: boolean; deletedCount: number; error?: string }> {
+    try {
+      console.warn('⚠️ WARNING: About to delete ALL activity logs. This action cannot be undone!')
+      
+      // Get all documents in the collection
+      const querySnapshot = await getDocs(collection(db, this.COLLECTION))
+      const totalDocs = querySnapshot.docs.length
+      
+      if (totalDocs === 0) {
+        return { success: true, deletedCount: 0 }
+      }
+
+      console.log(`🗑️ Found ${totalDocs} documents to delete`)
+
+      // Use batch operations to delete in chunks (Firestore batch limit is 500)
+      const batchSize = 500
+      let deletedCount = 0
+      let batch = writeBatch(db)
+      let operationCount = 0
+
+      for (const docSnapshot of querySnapshot.docs) {
+        batch.delete(docSnapshot.ref)
+        operationCount++
+        deletedCount++
+
+        // Commit batch when it reaches the limit
+        if (operationCount === batchSize) {
+          await batch.commit()
+          console.log(`✅ Deleted batch of ${operationCount} documents`)
+          batch = writeBatch(db)
+          operationCount = 0
+        }
+      }
+
+      // Commit any remaining operations
+      if (operationCount > 0) {
+        await batch.commit()
+        console.log(`✅ Deleted final batch of ${operationCount} documents`)
+      }
+
+      console.log(`🎉 Successfully deleted ${deletedCount} activity log documents`)
+      return { success: true, deletedCount }
+    } catch (error: any) {
+      console.error('❌ Error clearing activity logs:', error)
+      return { 
+        success: false, 
+        deletedCount: 0, 
+        error: error.message || 'Unknown error occurred' 
+      }
+    }
+  }
+
+  // Clear activity logs with filters (safer option)
+  static async clearActivityLogsWithFilters(filters: {
+    userId?: string
+    module?: string
+    entityType?: string
+    action?: string
+    startDate?: Date
+    endDate?: Date
+  }): Promise<{ success: boolean; deletedCount: number; error?: string }> {
+    try {
+      console.warn('⚠️ WARNING: About to delete filtered activity logs. This action cannot be undone!')
+      
+      let q = query(collection(db, this.COLLECTION))
+
+      // Apply filters
+      if (filters.userId) {
+        q = query(q, where('userId', '==', filters.userId))
+      }
+      if (filters.module) {
+        q = query(q, where('module', '==', filters.module))
+      }
+      if (filters.entityType) {
+        q = query(q, where('entityType', '==', filters.entityType))
+      }
+      if (filters.action) {
+        q = query(q, where('action', '==', filters.action))
+      }
+      if (filters.startDate) {
+        q = query(q, where('createdAt', '>=', Timestamp.fromDate(filters.startDate)))
+      }
+      if (filters.endDate) {
+        q = query(q, where('createdAt', '<=', Timestamp.fromDate(filters.endDate)))
+      }
+
+      const querySnapshot = await getDocs(q)
+      const totalDocs = querySnapshot.docs.length
+      
+      if (totalDocs === 0) {
+        return { success: true, deletedCount: 0 }
+      }
+
+      console.log(`🗑️ Found ${totalDocs} documents matching filters to delete`)
+
+      // Use batch operations to delete in chunks
+      const batchSize = 500
+      let deletedCount = 0
+      let batch = writeBatch(db)
+      let operationCount = 0
+
+      for (const docSnapshot of querySnapshot.docs) {
+        batch.delete(docSnapshot.ref)
+        operationCount++
+        deletedCount++
+
+        // Commit batch when it reaches the limit
+        if (operationCount === batchSize) {
+          await batch.commit()
+          console.log(`✅ Deleted batch of ${operationCount} documents`)
+          batch = writeBatch(db)
+          operationCount = 0
+        }
+      }
+
+      // Commit any remaining operations
+      if (operationCount > 0) {
+        await batch.commit()
+        console.log(`✅ Deleted final batch of ${operationCount} documents`)
+      }
+
+      console.log(`🎉 Successfully deleted ${deletedCount} filtered activity log documents`)
+      return { success: true, deletedCount }
+    } catch (error: any) {
+      console.error('❌ Error clearing filtered activity logs:', error)
+      return { 
+        success: false, 
+        deletedCount: 0, 
+        error: error.message || 'Unknown error occurred' 
+      }
     }
   }
 } 

@@ -52,7 +52,8 @@ The system organizes users into the following departments:
 ### Available Roles
 | Role | Description | Typical Use Case |
 |------|-------------|------------------|
-| `Agent (CA/CC/KAM)` | Customer service and account management | Front-line customer support |
+| `CC/CA` | Customer Care/Customer Assistant | Front-line customer support and assistance |
+| `KAM` | Key Account Management | Account management and client relationships |
 | `TL` | Team Leader | Team supervision and coordination |
 | `Manager` | Department Manager | Department-level management |
 | `QA` | Quality Assurance | Quality control and testing |
@@ -114,7 +115,6 @@ The system organizes users into the following departments:
   - Module-specific permissions (VIEW, SEARCH, EDIT, ADD, DELETE, IMPORT, EXPORT)
   - Merchant access controls
   - Currency restrictions
-  - Member data visibility (Normal vs VIP access)
 - Change user status (activate/deactivate)
 
 **UI Elements Available:**
@@ -133,8 +133,7 @@ Authority Settings
 
 Access Controls
 ├── Merchant Access: MERCHANT_A, MERCHANT_B (Multi-select)
-├── Currency Access: USD, EUR, MYR (Multi-select)
-└── Member Data: [✓] Normal Members [✓] VIP Members
+└── Currency Access: USD, EUR, MYR (Multi-select)
 ```
 
 ---
@@ -148,7 +147,6 @@ Access Controls
   - Role assignment
   - Initial permission matrix
   - Merchant and currency access
-  - Member data visibility settings
 - Password requirement: Minimum 6 characters for new users
 
 **UI Elements Available:**
@@ -164,13 +162,12 @@ Personal Information
 ├── Email: [Email Input]
 ├── Password: [Password Input] (Required, min 6 chars)
 ├── Department: [Dropdown: KAM, MktOps, SalesOps, Audit, DSA]
-└── Role: [Dropdown: Agent, TL, Manager, QA, MKTops, Audit, Admin]
+└── Role: [Dropdown: CC/CA, KAM, TL, Manager, QA, MKTops, Audit, Admin]
 
 Authority Settings
 ├── [Permission Matrix for all modules]
 ├── Merchant Access: [Multi-select dropdown]
-├── Currency Access: [Multi-select dropdown]
-└── Member Data Access: [Normal/VIP checkboxes]
+└── Currency Access: [Multi-select dropdown]
 ```
 
 ---

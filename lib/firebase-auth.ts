@@ -1,30 +1,6 @@
-import {
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  User,
-  createUserWithEmailAndPassword,
-  updateProfile,
-  sendPasswordResetEmail,
-  updatePassword,
-  deleteUser,
-  getAuth,
-  EmailAuthProvider,
-  reauthenticateWithCredential,
-} from 'firebase/auth'
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged, User, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail, updatePassword, deleteUser, getAuth, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'
 import { initializeApp, deleteApp } from 'firebase/app'
-import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  collection,
-  query,
-  where,
-  getDocs,
-  serverTimestamp,
-  writeBatch,
-} from 'firebase/firestore'
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import type { FirebaseUser } from '@/types/firebase'
 import type { UserRole, Permission, MemberType } from '@/types/auth'
@@ -38,7 +14,7 @@ export class FirebaseAuthService {
 
       // Get user data from Firestore
       let userData = await this.getUserData(user.uid)
-      
+
       // If user document doesn't exist, create it with default role based on email
       if (!userData) {
         userData = await this.createUserDocumentOnFirstLogin(user)
@@ -69,14 +45,17 @@ export class FirebaseAuthService {
   static async createUser(userData: Omit<FirebaseUser, 'id' | 'createdAt' | 'updatedAt' | 'lastLogin'> & { password: string }): Promise<string> {
     try {
       // Create a secondary Firebase app instance for user creation
-      const secondaryApp = initializeApp({
-        apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-        authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-        messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-        appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-      }, 'Secondary')
+      const secondaryApp = initializeApp(
+        {
+          apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+          authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+          storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+          messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+          appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+        },
+        'Secondary'
+      )
 
       const secondaryAuth = getAuth(secondaryApp)
 
@@ -97,6 +76,9 @@ export class FirebaseAuthService {
       }
 
       await setDoc(doc(db, 'users', user.uid), userDoc)
+
+      // Create default notification settings for the user
+      await this.createDefaultNotificationSettings(user.uid)
 
       // Sign out from secondary auth (cleanup)
       await signOut(secondaryAuth)
@@ -132,11 +114,7 @@ export class FirebaseAuthService {
   }
 
   // Update user data
-  static async updateUserData(
-    uid: string,
-    updates: Partial<Omit<FirebaseUser, 'id' | 'createdAt' | 'email'>>,
-    updatedBy?: string
-  ): Promise<void> {
+  static async updateUserData(uid: string, updates: Partial<Omit<FirebaseUser, 'id' | 'createdAt' | 'email'>>, updatedBy?: string): Promise<void> {
     try {
       const updateData = {
         ...updates,
@@ -156,11 +134,7 @@ export class FirebaseAuthService {
   }
 
   // Update user permissions
-  static async updateUserPermissions(
-    uid: string,
-    permissions: Record<string, Permission[]>,
-    updatedBy: string
-  ): Promise<void> {
+  static async updateUserPermissions(uid: string, permissions: Record<string, Permission[]>, updatedBy: string): Promise<void> {
     try {
       await updateDoc(doc(db, 'users', uid), {
         permissions,
@@ -238,7 +212,7 @@ export class FirebaseAuthService {
       })) as FirebaseUser[]
 
       // Filter out archived users (include users where isArchived is undefined, null, or false)
-      return users.filter(user => !user.isArchived)
+      return users.filter((user) => !user.isArchived)
     } catch (error: any) {
       console.error('Error fetching all users:', error)
       return []
@@ -264,11 +238,7 @@ export class FirebaseAuthService {
   // Get users by merchant access
   static async getUsersByMerchant(merchant: string): Promise<FirebaseUser[]> {
     try {
-      const q = query(
-        collection(db, 'users'),
-        where('merchants', 'array-contains', merchant),
-        where('isActive', '==', true)
-      )
+      const q = query(collection(db, 'users'), where('merchants', 'array-contains', merchant), where('isActive', '==', true))
       const querySnapshot = await getDocs(q)
 
       return querySnapshot.docs.map((doc) => ({
@@ -338,14 +308,7 @@ export class FirebaseAuthService {
   }
 
   // Log user activity
-  static async logActivity(
-    userId: string,
-    action: string,
-    module: string,
-    entityType: string,
-    entityId: string,
-    details: Record<string, any>
-  ): Promise<void> {
+  static async logActivity(userId: string, action: string, module: string, entityType: string, entityId: string, details: Record<string, any>): Promise<void> {
     try {
       const userData = await this.getUserData(userId)
       if (!userData) return
@@ -403,7 +366,7 @@ export class FirebaseAuthService {
       let region = 'North America'
 
       // Set role and permissions based on email
-      if (user.email === 'admin@crm.com') {
+      if (user.email === 'admin@crm.com' || user.email?.includes('admin')) {
         role = 'ADMIN'
         merchants = ['MERCHANT_A', 'MERCHANT_B', 'MERCHANT_C']
         currencies = ['USD', 'EUR', 'GBP']
@@ -411,10 +374,10 @@ export class FirebaseAuthService {
         department = 'IT'
         region = 'Global'
         permissions = {
-          'vip-profile': ['VIEW', 'SEARCH', 'EDIT', 'ADD', 'DELETE', 'EXPORT'],
-          'campaign': ['VIEW', 'SEARCH', 'EDIT', 'ADD', 'DELETE', 'EXPORT'],
-          'gift-approval': ['VIEW', 'SEARCH', 'EDIT', 'ADD', 'DELETE', 'EXPORT'],
-          'user-management': ['VIEW', 'SEARCH', 'EDIT', 'ADD', 'DELETE', 'EXPORT']
+          'vip-profile': ['VIEW', 'SEARCH', 'EDIT', 'ADD', 'DELETE', 'IMPORT', 'EXPORT'],
+          campaign: ['VIEW', 'SEARCH', 'EDIT', 'ADD', 'DELETE', 'IMPORT', 'EXPORT'],
+          'gift-approval': ['VIEW', 'SEARCH', 'EDIT', 'ADD', 'DELETE', 'IMPORT', 'EXPORT'],
+          'user-management': ['VIEW', 'SEARCH', 'EDIT', 'ADD', 'DELETE', 'IMPORT', 'EXPORT'],
         }
       } else if (user.email === 'manager@crm.com') {
         role = 'MANAGER'
@@ -423,17 +386,17 @@ export class FirebaseAuthService {
         memberAccess = ['NORMAL', 'VIP']
         department = 'Marketing'
         permissions = {
-          'vip-profile': ['VIEW', 'SEARCH'],
-          'campaign': ['VIEW', 'SEARCH', 'EDIT'],
-          'gift-approval': ['VIEW', 'SEARCH', 'EDIT'],
-          'user-management': ['VIEW', 'SEARCH', 'EDIT']
+          'vip-profile': ['VIEW', 'SEARCH', 'EXPORT'],
+          campaign: ['VIEW', 'SEARCH', 'EDIT', 'ADD', 'EXPORT'],
+          'gift-approval': ['VIEW', 'SEARCH', 'EDIT', 'IMPORT', 'EXPORT'],
+          'user-management': ['VIEW', 'SEARCH', 'EDIT'],
         }
       } else if (user.email === 'kam@crm.com') {
         role = 'KAM'
         permissions = {
           'vip-profile': ['VIEW', 'SEARCH', 'EDIT', 'ADD'],
-          'campaign': ['VIEW', 'SEARCH', 'EDIT', 'ADD', 'DELETE'],
-          'gift-approval': ['VIEW', 'ADD']
+          campaign: ['VIEW', 'SEARCH', 'EDIT', 'ADD', 'DELETE'],
+          'gift-approval': ['VIEW', 'SEARCH', 'ADD', 'IMPORT'],
         }
       }
 
@@ -453,15 +416,18 @@ export class FirebaseAuthService {
         createdAt: serverTimestamp() as any,
         updatedAt: serverTimestamp() as any,
         lastLogin: serverTimestamp() as any,
-        additionalData: {}
+        additionalData: {},
       }
 
       await setDoc(doc(db, 'users', user.uid), userData)
 
+      // Create default notification settings for the user
+      await this.createDefaultNotificationSettings(user.uid)
+
       // Log activity
       await this.logActivity(user.uid, 'FIRST_LOGIN', 'user-management', 'user', user.uid, {
         email: user.email,
-        role: role
+        role: role,
       })
 
       return userData
@@ -489,13 +455,13 @@ export class FirebaseAuthService {
       // Log activity
       await this.logActivity(user.uid, 'CHANGE_PASSWORD', 'user-management', 'user', user.uid, {
         email: user.email,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       })
 
       console.log('Password changed successfully')
     } catch (error: any) {
       console.error('Password change failed:', error)
-      
+
       // Map Firebase error codes to user-friendly messages
       if (error.code === 'auth/wrong-password') {
         throw new Error('Current password is incorrect')
@@ -516,7 +482,7 @@ export class FirebaseAuthService {
       console.log('Password reset email sent successfully')
     } catch (error: any) {
       console.error('Failed to send password reset email:', error)
-      
+
       if (error.code === 'auth/user-not-found') {
         throw new Error('No account found with this email address')
       } else if (error.code === 'auth/invalid-email') {
@@ -526,4 +492,44 @@ export class FirebaseAuthService {
       }
     }
   }
-} 
+
+  // Create default notification settings for a user
+  static async createDefaultNotificationSettings(userId: string): Promise<void> {
+    try {
+      // Get user data to check permissions
+      const userData = await this.getUserData(userId)
+      if (!userData) {
+        console.error(`User data not found for notification settings: ${userId}`)
+        return
+      }
+
+      // Determine which modules the user has VIEW permission for
+      const moduleSettings: Record<string, boolean> = {}
+      
+      // Check each module for VIEW permission
+      const modules = ['gift-approval', 'vip-profile', 'campaign', 'reports', 'user-management']
+      modules.forEach(module => {
+        moduleSettings[module] = this.hasPermission(userData, module, 'VIEW')
+      })
+
+      const defaultSettings = {
+        userId,
+        email: true,
+        push: true,
+        inApp: true,
+        modules: moduleSettings, // Only modules user has VIEW permission for
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }
+
+      await setDoc(doc(db, 'notification_settings', userId), defaultSettings)
+      console.log(`Default notification settings created for user: ${userId}`, {
+        modules: moduleSettings,
+        role: userData.role
+      })
+    } catch (error: any) {
+      console.error('Error creating default notification settings:', error)
+      // Don't throw error to avoid breaking user creation
+    }
+  }
+}

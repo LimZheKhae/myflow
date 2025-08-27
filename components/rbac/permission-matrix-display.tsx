@@ -76,11 +76,11 @@ export default function PermissionMatrixDisplay({ user }: PermissionMatrixDispla
                 </div>
 
                 {/* Data Access */}
-                {userDataAccess[module] && (
+                {userDataAccess[module as keyof typeof userDataAccess] && (
                   <div className="space-y-2">
                     <h4 className="text-sm font-medium text-gray-600">Data Access Rights</h4>
                     <div className="grid grid-cols-2 gap-2">
-                      {Object.entries(userDataAccess[module] as Record<string, string>).map(([field, access]) => (
+                      {Object.entries(userDataAccess[module as keyof typeof userDataAccess] as Record<string, string>).map(([field, access]) => (
                         <div key={field} className="flex items-center justify-between p-2 rounded-lg bg-gray-50 border">
                           <span className="text-sm font-medium capitalize">{field.replace("_", " ")}</span>
                           <div className="flex items-center gap-2">

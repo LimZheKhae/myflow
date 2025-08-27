@@ -1,0 +1,255 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { executeQuery } from '@/lib/snowflake/config'
+import { GiftRequestForm, GiftCategory } from '@/types/gift'
+import { debugSQL } from '@/lib/utils'
+import { logWorkflowTimeline } from '@/lib/workflow-timeline'
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const {
+      memberName,
+      memberLogin,
+      memberId,
+      giftItem,
+      rewardName,
+      rewardClubOrder,
+      costMyr,
+      costLocal,
+      currency,
+      remark,
+      category,
+      userId,
+      userRole,
+      userPermissions,
+    }: GiftRequestForm & {
+      userId: string
+      costMyr: number
+      costLocal: number | null
+      currency: string
+      memberId: number
+      userRole?: string
+      userPermissions?: Record<string, string[]>
+    } = body
+
+    // Validate required fields
+    if (!giftItem || !costMyr || !category || !userId || !memberName || !memberLogin || !memberId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Gift item, member name, member login, member ID, value, category, and Firebase User ID are required',
+        },
+        { status: 400 }
+      )
+    }
+
+    // Basic user ID validation (should be a non-empty string)
+    if (typeof userId !== 'string' || userId.trim().length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Invalid user ID format',
+        },
+        { status: 400 }
+      )
+    }
+
+    // Server-side role validation using client-provided data
+    if (!userRole) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'User role is required',
+        },
+        { status: 400 }
+      )
+    }
+
+    // Check if user has KAM or Admin role
+    if (!['KAM', 'ADMIN'].includes(userRole)) {
+      console.log('❌ [PERMISSION VALIDATION] User role not allowed for create gift request', userRole)
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Insufficient role permissions. Only KAM and Admin users can create gift requests.',
+        },
+        { status: 403 }
+      )
+    }
+
+    // Check if user has ADD permission for gift-approval module
+    if (!userPermissions || !userPermissions['gift-approval'] || !userPermissions['gift-approval'].includes('ADD')) {
+      console.log('❌ [PERMISSION VALIDATION] User does not have ADD permission for gift-approval module', userPermissions)
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Insufficient module permissions. ADD permission required for gift-approval module.',
+        },
+        { status: 403 }
+      )
+    }
+
+    // Validate category (remove the incorrect validation)
+    // Category validation should be handled by frontend Zod schema
+    // Backend will accept any valid category from the GiftCategory type
+
+    // Validate cost value
+    if (costMyr <= 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Value must be a positive number',
+        },
+        { status: 400 }
+      )
+    }
+
+    // For individual gifts, we don't create a batch - BATCH_ID will be NULL
+    const batchId = null
+
+    // Insert gift request
+    const insertSQL = `
+      INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
+        BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
+        MEMBER_ID, MEMBER_LOGIN, REWARD_NAME, GIFT_ITEM,
+        COST_BASE, CURRENCY, COST_LOCAL, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+        LAST_MODIFIED_DATE
+      ) VALUES (?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
+    `
+
+    const insertParams = [
+      batchId,
+      userId, // KAM_REQUESTED_BY - Use user ID from request body
+      'KAM_Request', // WORKFLOW_STATUS
+      memberId, // MEMBER_ID
+      memberLogin, // MEMBER_LOGIN
+      rewardName || null, // REWARD_NAME
+      giftItem, // GIFT_ITEM
+      costMyr, // COST_BASE (always in MYR)
+      currency || 'MYR', // CURRENCY (from member profile)
+      costLocal, // COST_LOCAL (local currency amount, can be null)
+      remark || null, // REMARK
+      rewardClubOrder || null, // REWARD_CLUB_ORDER
+      category, // CATEGORY
+    ]
+
+    // Debug the SQL query and parameters
+    debugSQL(insertSQL, insertParams, 'Gift Request Insert')
+
+    const result = await executeQuery(insertSQL, insertParams)
+
+    // Debug the result structure
+    console.log('🔍 Insert Result Structure:', {
+      result: result,
+      resultType: typeof result,
+      isArray: Array.isArray(result),
+      length: Array.isArray(result) ? result.length : 'N/A',
+      keys: result && typeof result === 'object' ? Object.keys(result) : 'N/A',
+      firstElement: Array.isArray(result) ? result[0] : 'N/A',
+      rowsInserted: Array.isArray(result) && result[0] ? result[0]['number of rows inserted'] : 'N/A',
+    })
+
+    // Check if the insert was successful based on the actual Snowflake result structure
+    const rowsInserted = Array.isArray(result) && result[0] ? result[0]['number of rows inserted'] : 0
+
+    if (rowsInserted === 0) {
+      return NextResponse.json({ success: false, message: 'Failed to create gift request - no rows affected' }, { status: 500 })
+    }
+
+    // Update the WORKFLOW_STATUS to Manager_Review for all KAM_Request gifts created today by this user
+    const updateWorkflowSQL = `
+      UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
+      SET WORKFLOW_STATUS = ?, LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
+      WHERE KAM_REQUESTED_BY = ? 
+        AND WORKFLOW_STATUS = 'KAM_Request'
+        AND DATE(CREATED_DATE) = CURRENT_DATE()
+    `
+
+    const updateWorkflowParams = ['Manager_Review', userId]
+
+    // Debug the workflow update query
+    debugSQL(updateWorkflowSQL, updateWorkflowParams, 'Workflow Status Update')
+
+    const updateResult = await executeQuery(updateWorkflowSQL, updateWorkflowParams)
+
+    // Debug the update result
+    console.log('🔍 Update Result Structure:', {
+      result: updateResult,
+      resultType: typeof updateResult,
+      isArray: Array.isArray(updateResult),
+      length: Array.isArray(updateResult) ? updateResult.length : 'N/A',
+      keys: updateResult && typeof updateResult === 'object' ? Object.keys(updateResult) : 'N/A',
+      firstElement: Array.isArray(updateResult) ? updateResult[0] : 'N/A',
+      rowsUpdated: Array.isArray(updateResult) && updateResult[0] ? updateResult[0]['number of rows updated'] : 'N/A',
+    })
+
+    // Check if the update was successful
+    const rowsUpdated = Array.isArray(updateResult) && updateResult[0] ? updateResult[0]['number of rows updated'] : 0
+
+    if (rowsUpdated === 0) {
+      console.warn('⚠️ Warning: Gift request created but workflow status update failed - no KAM_Request records found for today')
+      // Don't fail the entire request, just log a warning
+    } else {
+      console.log(`✅ Successfully updated ${rowsUpdated} gift request(s) to Manager_Review status`)
+    }
+
+    // Get the created gift ID
+    const getGiftIdSQL = `
+      SELECT GIFT_ID 
+      FROM MY_FLOW.PUBLIC.GIFT_DETAILS 
+      WHERE KAM_REQUESTED_BY = ? 
+        AND MEMBER_LOGIN = ?
+        AND GIFT_ITEM = ?
+        AND COST_BASE = ?
+        AND DATE(CREATED_DATE) = CURRENT_DATE()
+      ORDER BY CREATED_DATE DESC 
+      LIMIT 1
+    `
+
+    const giftIdResult = await executeQuery(getGiftIdSQL, [userId, memberLogin, giftItem, costMyr])
+    const createdGiftId = Array.isArray(giftIdResult) && giftIdResult[0] ? giftIdResult[0].GIFT_ID : null
+
+    // Log workflow timeline for gift creation
+    if (createdGiftId) {
+      // Log initial creation
+      await logWorkflowTimeline({
+        giftId: createdGiftId,
+        fromStatus: null,
+        toStatus: 'KAM_Request',
+        changedBy: userId,
+        remark: `Gift request created: ${giftItem}`,
+      })
+
+      // Log automatic progression to Manager_Review
+      if (rowsUpdated > 0) {
+        await logWorkflowTimeline({
+          giftId: createdGiftId,
+          fromStatus: 'KAM_Request',
+          toStatus: 'Manager_Review',
+          changedBy: userId,
+          remark: 'Automatically moved to Manager Review',
+        })
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Gift request created successfully and moved to Manager Review',
+      data: {
+        giftId: createdGiftId, // Return the created gift ID for logging
+        batchId: null, // Individual gifts don't have batch IDs
+        workflowStatus: 'Manager_Review',
+      },
+    })
+  } catch (error) {
+    console.error('Error creating gift request:', error)
+    return NextResponse.json(
+      {
+        success: false,
+        message: 'Failed to create gift request',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
+  }
+}
