@@ -11,7 +11,7 @@ export default function TestIntegratedNotifications() {
     const handleBrevoEmailTest = async () => {
         setLoading(true)
         try {
-            const response = await fetch('/api/test-brevo-email', {
+            const response = await fetch('tests/api/test-brevo-email', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -44,7 +44,7 @@ export default function TestIntegratedNotifications() {
     const handleBrevoCompanyEmailTest = async () => {
         setLoading(true)
         try {
-            const response = await fetch('/api/test-brevo-email', {
+            const response = await fetch('tests/api/test-brevo-email', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -77,7 +77,7 @@ export default function TestIntegratedNotifications() {
     const handleGiftRejectionTest = async () => {
         setLoading(true)
         try {
-            const response = await fetch('/api/test-gift-rejection', {
+            const response = await fetch('tests/api/test-gift-rejection', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -117,7 +117,7 @@ export default function TestIntegratedNotifications() {
     const handleGiftRejectionCompanyTest = async () => {
         setLoading(true)
         try {
-            const response = await fetch('/api/test-gift-rejection', {
+            const response = await fetch('tests/api/test-gift-rejection', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
