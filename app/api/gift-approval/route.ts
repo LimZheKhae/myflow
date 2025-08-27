@@ -57,14 +57,17 @@ export async function GET(request: NextRequest) {
 
     if (search) {
       whereConditions.push(`(
+        CAST(GIFT_ID AS VARCHAR) ILIKE ? OR
         MEMBER_LOGIN ILIKE ? OR 
         FULL_NAME ILIKE ? OR 
         GIFT_ITEM ILIKE ? OR 
         REWARD_NAME ILIKE ? OR
-        TRACKING_CODE ILIKE ?
+        TRACKING_CODE ILIKE ? OR
+        KAM_NAME ILIKE ? OR
+        KAM_EMAIL ILIKE ?
       )`)
       const searchTerm = `%${search}%`
-      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm)
+      params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm)
     }
 
     const whereClause = whereConditions.join(' AND ')
@@ -178,7 +181,7 @@ export async function GET(request: NextRequest) {
       pagination: {
         page,
         total,
-        totalPages: Math.ceil(total / 50),
+        totalPages: Math.ceil(total / 25), // Updated to match frontend default
       },
     })
   } catch (error) {

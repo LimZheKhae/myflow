@@ -24,8 +24,9 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
-import { exportToCSV, formatMoney, getImageProxyUrl, getImageDownloadUrl } from '@/lib/utils'
+import { exportToCSV, formatMoney, getImageProxyUrl, getImageDownloadUrl, getFilenameFromUrl } from '@/lib/utils'
 import { FileUploader } from '@/components/ui/file-uploader'
+import ImagePopup from '@/components/ui/image-popup'
 
 import type { GiftRequestDetails, GiftRequestDetailsView, GiftCategory, WorkflowStatus, TrackingStatus, GiftRequestForm } from '@/types/gift'
 import { useMemberProfiles, useMemberValidation } from '@/contexts/member-profile-context'
@@ -82,11 +83,13 @@ const WorkflowTimeline: React.FC<{ giftId: number }> = ({ giftId }) => {
       return <Truck className="h-4 w-4" />
     } else if (titleLower.includes('delivery confirmation') || titleLower.includes('kam proof')) {
       return <Camera className="h-4 w-4" />
+    } else if (titleLower.includes('audit issue')) {
+      return <AlertCircle className="h-4 w-4" />
     } else if (titleLower.includes('salesops audit') || titleLower.includes('audit')) {
       return <Shield className="h-4 w-4" />
     } else if (titleLower.includes('completed')) {
       return <CheckCircle2 className="h-4 w-4" />
-    } else if (titleLower.includes('rejected') || titleLower.includes('audit issue')) {
+    } else if (titleLower.includes('rejected')) {
       return <XCircle className="h-4 w-4" />
     } else {
       return <Circle className="h-4 w-4" />
@@ -105,11 +108,13 @@ const WorkflowTimeline: React.FC<{ giftId: number }> = ({ giftId }) => {
       return 'text-purple-600 bg-purple-100'
     } else if (titleLower.includes('delivery confirmation') || titleLower.includes('kam proof')) {
       return 'text-orange-600 bg-orange-100'
+    } else if (titleLower.includes('audit issue')) {
+      return 'text-amber-600 bg-amber-100'
     } else if (titleLower.includes('salesops audit') || titleLower.includes('audit')) {
       return 'text-indigo-600 bg-indigo-100'
     } else if (titleLower.includes('completed')) {
       return 'text-green-600 bg-green-100'
-    } else if (titleLower.includes('rejected') || titleLower.includes('audit issue')) {
+    } else if (titleLower.includes('rejected')) {
       return 'text-red-600 bg-red-100'
     } else {
       return 'text-gray-600 bg-gray-100'
@@ -128,11 +133,13 @@ const WorkflowTimeline: React.FC<{ giftId: number }> = ({ giftId }) => {
       return 'text-purple-500'
     } else if (titleLower.includes('delivery confirmation') || titleLower.includes('kam proof')) {
       return 'text-orange-500'
+    } else if (titleLower.includes('audit issue')) {
+      return 'text-amber-500'
     } else if (titleLower.includes('salesops audit') || titleLower.includes('audit')) {
       return 'text-indigo-500'
     } else if (titleLower.includes('completed')) {
       return 'text-green-500'
-    } else if (titleLower.includes('rejected') || titleLower.includes('audit issue')) {
+    } else if (titleLower.includes('rejected')) {
       return 'text-red-500'
     } else {
       return 'text-gray-500'
@@ -193,12 +200,6 @@ const WorkflowTimeline: React.FC<{ giftId: number }> = ({ giftId }) => {
                 <h4 className="font-medium text-slate-900">
                   {event.TIMELINE_TITLE}
                 </h4>
-                <Badge
-                  variant="outline"
-                  className={`text-xs ${getStatusColor(event.TIMELINE_TITLE)}`}
-                >
-                  {event.TIMELINE_TITLE}
-                </Badge>
               </div>
               <div className="flex items-center space-x-2 text-sm text-slate-500">
                 <Calendar className="h-3 w-3" />
@@ -338,12 +339,14 @@ export default function Gifts() {
   const [apiLoading, setApiLoading] = useState(true)
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: 50,
+    limit: 25,
     total: 0,
     totalPages: 0,
   })
   const [activeTab, setActiveTab] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  const [isSearching, setIsSearching] = useState(false)
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all')
   const [isAnimating, setIsAnimating] = useState(false)
   const [selectedGift, setSelectedGift] = useState<GiftRequestDetailsView | null>(null)
@@ -355,6 +358,11 @@ export default function Gifts() {
   const [isMKTOpsModalOpen, setIsMKTOpsModalOpen] = useState(false)
   const [isKAMProofModalOpen, setIsKAMProofModalOpen] = useState(false)
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false)
+
+  // Image popup states
+  const [isImagePopupOpen, setIsImagePopupOpen] = useState(false)
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
+  const [selectedImageAlt, setSelectedImageAlt] = useState<string>('')
 
   // Loading states for API actions
   const [isSubmittingRequest, setIsSubmittingRequest] = useState(false)
@@ -418,12 +426,23 @@ export default function Gifts() {
   const canImportGifts = hasPermission('gift-approval', 'IMPORT')
   const canExportGifts = hasPermission('gift-approval', 'EXPORT')
 
+  // Helper function to open image popup
+  const handleOpenImagePopup = (imageUrl: string | null, altText: string) => {
+    if (!imageUrl) return
+    const proxyUrl = getImageProxyUrl(imageUrl)
+    if (proxyUrl) {
+      setSelectedImageUrl(proxyUrl)
+      setSelectedImageAlt(altText)
+      setIsImagePopupOpen(true)
+    }
+  }
+
   // Reusable function to refresh the gifts data
   const refreshGiftsData = async () => {
     try {
       setApiLoading(true) // Show skeleton animation during refresh
       const result = await fetchGifts({
-        search: searchTerm,
+        search: debouncedSearchTerm,
         // Remove workflowStatus filter - fetch all data
       })
       setGifts(convertDatesInGifts(result.data))
@@ -442,6 +461,20 @@ export default function Gifts() {
     }
   }
 
+  // Debounced search effect
+  useEffect(() => {
+    if (searchTerm !== debouncedSearchTerm) {
+      setIsSearching(true)
+    }
+
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+      setIsSearching(false)
+    }, 500) // 500ms delay
+
+    return () => clearTimeout(timer)
+  }, [searchTerm, debouncedSearchTerm])
+
   // Load gifts data - fetch all data once, then filter client-side
   useEffect(() => {
     const loadGifts = async () => {
@@ -452,7 +485,7 @@ export default function Gifts() {
         // Always fetch all gifts without pagination limits
         // When searching, we want to search across all workflow statuses
         const result = await fetchGifts({
-          search: searchTerm,
+          search: debouncedSearchTerm,
           // Never send workflowStatus filter - always fetch all data
           // This allows searching across all tabs and workflow statuses
         })
@@ -473,7 +506,7 @@ export default function Gifts() {
     }
 
     loadGifts()
-  }, [user, searchTerm]) // Removed pagination.page, pagination.limit, and activeTab dependencies
+  }, [user, debouncedSearchTerm]) // Use debouncedSearchTerm instead of searchTerm
 
   // Clear row selection when tab changes
   const handleTabChange = (value: string) => {
@@ -1787,7 +1820,14 @@ export default function Gifts() {
 
     // Apply search filter if search term exists
     if (searchTerm) {
-      filtered = filtered.filter((gift) => gift.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) || gift.giftItem?.toLowerCase().includes(searchTerm.toLowerCase()) || gift.giftId?.toString().includes(searchTerm.toLowerCase()) || gift.memberLogin?.toLowerCase().includes(searchTerm.toLowerCase()))
+      filtered = filtered.filter((gift) =>
+        gift.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        gift.giftItem?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        gift.giftId?.toString().includes(searchTerm.toLowerCase()) ||
+        gift.memberLogin?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        gift.kamRequestedBy?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        gift.kamEmail?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
     }
 
     return filtered
@@ -2043,7 +2083,7 @@ export default function Gifts() {
     },
     {
       accessorKey: 'kamRequestedBy',
-      header: 'KAM',
+      header: 'PIC',
       cell: ({ row }) => (
         <div>
           <div className="font-medium">{row.getValue('kamRequestedBy') || 'N/A'}</div>
@@ -2066,7 +2106,7 @@ export default function Gifts() {
                     <Eye className="h-4 w-4" />
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                       <Package className="h-5 w-5" />
@@ -2082,7 +2122,7 @@ export default function Gifts() {
                         <CardTitle className="text-lg">Gift Details</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <p className="text-sm font-medium text-slate-600">Player</p>
                             <p className="text-base">
@@ -2110,8 +2150,11 @@ export default function Gifts() {
                             <p className="text-base">{gift.category || 'N/A'}</p>
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-slate-600">KAM</p>
+                            <p className="text-sm font-medium text-slate-600">PIC</p>
                             <p className="text-base">{gift.kamRequestedBy || 'N/A'}</p>
+                            {gift.kamEmail && (
+                              <p className="text-sm text-slate-500 mt-1">{gift.kamEmail}</p>
+                            )}
                           </div>
                           <div>
                             <p className="text-sm font-medium text-slate-600">Current Status</p>
@@ -2197,7 +2240,7 @@ export default function Gifts() {
                             {gift.dispatcher && (
                               <div>
                                 <h5 className="font-medium text-slate-700 mb-2">Shipping Information</h5>
-                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                                   <div>
                                     <span className="text-slate-600">Courier:</span> {gift.dispatcher}
                                   </div>
@@ -2214,18 +2257,15 @@ export default function Gifts() {
                               </div>
                             )}
 
-                            {gift.kamProof && (
+                            {gift.giftFeedback && (
                               <div>
-                                <h5 className="font-medium text-slate-700 mb-2">Delivery Proof</h5>
-                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                <h5 className="font-medium text-slate-700 mb-2">Delivery Feedback</h5>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                                   <div>
-                                    <span className="text-slate-600">Proof File:</span> {gift.kamProof}
+                                    <span className="text-slate-600">Feedback:</span> {gift.giftFeedback}
                                   </div>
                                   <div>
                                     <span className="text-slate-600">Uploaded By:</span> {gift.kamProofBy || 'Unknown'}
-                                  </div>
-                                  <div>
-                                    <span className="text-slate-600">Feedback:</span> {gift.giftFeedback || 'No feedback provided'}
                                   </div>
                                 </div>
                               </div>
@@ -2234,14 +2274,14 @@ export default function Gifts() {
                             {gift.auditRemark && gift.workflowStatus !== 'Rejected' && gift.workflowStatus !== 'KAM_Proof' && (
                               <div>
                                 <h5 className="font-medium text-slate-700 mb-2">Audit Information</h5>
-                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                                   <div>
                                     <span className="text-slate-600">Checker:</span> {gift.auditorName || 'Unknown'}
                                   </div>
                                   <div>
                                     <span className="text-slate-600">Checked Date:</span> {gift.auditDate ? gift.auditDate.toLocaleDateString() : 'Unknown'}
                                   </div>
-                                  <div className="col-span-2">
+                                  <div className="col-span-1 md:col-span-2">
                                     <span className="text-slate-600">Remark:</span> {gift.auditRemark}
                                   </div>
                                 </div>
@@ -2447,6 +2487,7 @@ export default function Gifts() {
                   size="sm"
                   className="h-8 w-8 p-0 cursor-pointer text-indigo-600 hover:text-indigo-700"
                   onClick={() => {
+                    setSelectedGift(gift)
                     setAuditGiftId(gift.giftId)
                     setAuditRemark(gift.auditRemark || '')
                     setAuditCheckerName(user?.name || user?.email || '')
@@ -2509,7 +2550,13 @@ export default function Gifts() {
     {
       title: 'Total Value',
       value: formatMoney(
-        getFilteredGifts('all').reduce((sum, g) => sum + (g.costMyr || 0), 0),
+        getFilteredGifts('all').reduce((sum, g) => {
+          // Exclude rejected gifts from total value calculation
+          if (g.workflowStatus === 'Rejected') {
+            return sum
+          }
+          return sum + (g.costMyr || 0)
+        }, 0),
         { currency: 'MYR' }
       ),
       icon: null,
@@ -2855,14 +2902,14 @@ export default function Gifts() {
 
                 {/* Additional workflow details */}
                 <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="grid grid-cols-3 gap-4 text-xs text-gray-600">
-                    <div>
+                  <div className="flex justify-between items-center text-xs text-gray-600">
+                    <div className="text-center flex-1">
                       <span className="font-medium">Steps 1-2:</span> Request & Approval Phase
                     </div>
-                    <div>
+                    <div className="text-center flex-1">
                       <span className="font-medium">Steps 3-4:</span> Purchase & Delivery Phase
                     </div>
-                    <div>
+                    <div className="text-center flex-1">
                       <span className="font-medium">Step 5:</span> Audit & Compliance Phase
                     </div>
                   </div>
@@ -2881,8 +2928,17 @@ export default function Gifts() {
               {/* Search Bar */}
               <div className="flex items-center gap-2 mb-4">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                  <Input placeholder="Search by player name, gift item, or request ID... (searches across all tabs)" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
+                  {isSearching ? (
+                    <Loader2 className="absolute left-3 top-3 h-4 w-4 text-slate-400 animate-spin" />
+                  ) : (
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                  )}
+                  <Input
+                    placeholder="Search by player name, member login, gift item, KAM name/email, or gift ID..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
                 </div>
 
                 {/* Bulk Upload Button */}
@@ -3075,29 +3131,26 @@ export default function Gifts() {
                       {activeTab === 'processing' && (
                         <>
                           {/* Delivery Status Filter for Processing Tab */}
-                          <div className="flex items-center space-x-2 mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                            <Label htmlFor="deliveryStatusFilter" className="text-sm font-medium text-gray-700 whitespace-nowrap">
-                              Filter by Delivery Status:
-                            </Label>
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="flex items-center gap-2">
+                              <Truck className="h-4 w-4 text-gray-500" />
+                              <Label htmlFor="deliveryStatusFilter" className="text-sm font-medium text-gray-700">
+                                Delivery Status:
+                              </Label>
+                            </div>
                             <Select value={deliveryStatusFilter} onValueChange={setDeliveryStatusFilter}>
-                              <SelectTrigger className="w-48">
-                                <SelectValue placeholder="All delivery statuses" />
+                              <SelectTrigger className="w-40 h-8 text-sm">
+                                <SelectValue placeholder="All statuses" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="all">All Delivery Statuses</SelectItem>
-                                <SelectItem value="no-tracking">No Tracking Info</SelectItem>
+                                <SelectItem value="all">All Statuses</SelectItem>
+                                <SelectItem value="no-tracking">No Tracking</SelectItem>
                                 <SelectItem value="Pending">Pending</SelectItem>
                                 <SelectItem value="In Transit">In Transit</SelectItem>
                                 <SelectItem value="Delivered">Delivered</SelectItem>
                                 <SelectItem value="Failed">Failed</SelectItem>
-                                {/* <SelectItem value="Returned">Returned</SelectItem> */}
                               </SelectContent>
                             </Select>
-                            {deliveryStatusFilter !== 'all' && (
-                              <Button variant="outline" size="sm" onClick={() => setDeliveryStatusFilter('all')} className="text-xs">
-                                Clear Filter
-                              </Button>
-                            )}
                           </div>
                           <RoleBasedActionPermission
                             allowedRoles={['MKTOPS', 'MANAGER', 'ADMIN']}
@@ -3790,7 +3843,7 @@ export default function Gifts() {
 
       {/* Audit Modal */}
       <Dialog open={isAuditModalOpen} onOpenChange={setIsAuditModalOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5" />
@@ -3839,7 +3892,15 @@ export default function Gifts() {
                 <h4 className="font-medium text-green-900 mb-3">Delivery Proof</h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-green-600">Proof File:</span> {selectedGift.kamProof}
+                    <span className="text-green-600">Proof File:</span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenImagePopup(selectedGift.kamProof || null, 'Delivery Proof')}
+                      className="ml-2 text-blue-600 hover:text-blue-800 underline cursor-pointer text-left"
+                      title="Click to view image"
+                    >
+                      {getFilenameFromUrl(selectedGift.kamProof || null) || 'View Proof'}
+                    </button>
                   </div>
                   <div>
                     <span className="text-green-600">Receiver Feedback:</span> {selectedGift.giftFeedback || 'No feedback provided'}
@@ -3880,6 +3941,24 @@ export default function Gifts() {
                     <span className="text-blue-600">Purchase Date:</span> {selectedGift.mktPurchaseDate ? selectedGift.mktPurchaseDate.toLocaleDateString() : 'N/A'}
                   </div>
                 </div>
+
+                {/* MKTOps Proof Section */}
+                {selectedGift?.mktProof && (
+                  <div className="mt-4 pt-4 border-t border-blue-200">
+                    <h5 className="font-medium text-blue-800 mb-2">MKTOps Proof</h5>
+                    <div className="text-sm">
+                      <span className="text-blue-600">Proof File:</span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenImagePopup(selectedGift.mktProof || null, 'MKTOps Proof')}
+                        className="ml-2 text-blue-600 hover:text-blue-800 underline cursor-pointer text-left"
+                        title="Click to view image"
+                      >
+                        {getFilenameFromUrl(selectedGift.mktProof || null) || 'View Proof'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -3929,6 +4008,14 @@ export default function Gifts() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Image Popup */}
+      <ImagePopup
+        isOpen={isImagePopupOpen}
+        onClose={() => setIsImagePopupOpen(false)}
+        imageUrl={selectedImageUrl}
+        altText={selectedImageAlt}
+      />
     </div>
   )
 }

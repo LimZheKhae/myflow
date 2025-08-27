@@ -212,6 +212,27 @@ export const formatDateRangeLabel = (
 }
 
 /**
+ * Extract just the filename from Snowflake file URL for display
+ * @param snowflakeUrl - The Snowflake file URL (e.g., https://sm23176.ap-northeast-1.aws.snowflakecomputing.com/api/files/MY_FLOW/PUBLIC/IMAGE_FILES/filename.jpg)
+ * @returns Just the filename with extension (e.g., filename.jpg)
+ */
+export function getFilenameFromUrl(snowflakeUrl: string | null): string | null {
+  if (!snowflakeUrl) return null;
+  
+  try {
+    // Extract filename from Snowflake URL
+    // URL format: https://sm23176.ap-northeast-1.aws.snowflakecomputing.com/api/files/MY_FLOW/PUBLIC/IMAGE_FILES/filename.jpg
+    const urlParts = snowflakeUrl.split('/');
+    const filename = urlParts[urlParts.length - 1];
+    
+    return filename || null;
+  } catch (error) {
+    console.error('Error extracting filename from URL:', error);
+    return null;
+  }
+}
+
+/**
  * Convert Snowflake file URL to our proxy endpoint URL for image display
  * @param snowflakeUrl - The Snowflake file URL (e.g., https://sm23176.ap-northeast-1.aws.snowflakecomputing.com/api/files/MY_FLOW/PUBLIC/IMAGE_FILES/mkt-proof-131-1755677533103.jpg)
  * @returns Our proxy endpoint URL for serving the image
