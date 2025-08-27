@@ -6,6 +6,8 @@ import FirebaseLoginForm from "@/components/auth/firebase-login-form"
 import Sidebar from "@/components/layout/sidebar"
 import Header from "@/components/layout/header"
 import { Loader2, Upload, Download, Eye, Trash2 } from "lucide-react"
+import GeometricLoader from "@/components/ui/geometric-loader";
+import InlineLoader from "@/components/ui/inline-loader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { FileUploader } from "@/components/ui/file-uploader"
@@ -66,8 +68,8 @@ export default function TestImageUpload() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
-          <p className="text-gray-600">Loading your dashboard...</p>
+          <GeometricLoader size="lg" />
+          <p className="mt-4 text-gray-600 text-sm">Loading your dashboard...</p>
         </div>
       </div>
     )
@@ -77,10 +79,10 @@ export default function TestImageUpload() {
     return <FirebaseLoginForm />
   }
 
-//   // Check if user has VIEW permission for test-imageupload module
-//   if (!hasPermission('test-imageupload', 'VIEW')) {
-//     return <AccessDenied moduleName="Test Image Upload" />
-//   }
+  //   // Check if user has VIEW permission for test-imageupload module
+  //   if (!hasPermission('test-imageupload', 'VIEW')) {
+  //     return <AccessDenied moduleName="Test Image Upload" />
+  //   }
 
   const handleFileSelect = (file: File | null) => {
     if (file) {
@@ -98,25 +100,25 @@ export default function TestImageUpload() {
     }
 
     setIsUploading(true)
-    
+
     try {
       // Create FormData for file upload
       const formData = new FormData()
       formData.append('file', selectedFile)
-      
+
       // Upload file to Snowflake via API
       const response = await fetch('/api/snowflake/upload', {
         method: 'POST',
         body: formData
       })
-      
+
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Upload failed')
       }
-      
+
       const result = await response.json()
-      
+
       const uploadedImage: UploadedImage = {
         id: result.data.id,
         filename: result.data.filename,
@@ -129,7 +131,7 @@ export default function TestImageUpload() {
 
       setUploadedImages(prev => [uploadedImage, ...prev])
       setSelectedFile(null)
-      
+
       toast.success(`Successfully uploaded ${selectedFile.name} to Snowflake stage`)
     } catch (error) {
       console.error('Upload error:', error)
@@ -141,20 +143,20 @@ export default function TestImageUpload() {
 
   const fetchFromSnowflake = async (image: UploadedImage) => {
     setIsFetching(true)
-    
+
     try {
       // Fetch file from Snowflake via API
       const response = await fetch(`/api/snowflake/files/${image.filename}`, {
         method: 'GET'
       })
-      
+
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Fetch failed')
       }
-      
+
       const result = await response.json()
-      
+
       toast.success(`Successfully fetched ${image.filename} from Snowflake stage`)
     } catch (error) {
       console.error('Fetch error:', error)
@@ -171,19 +173,19 @@ export default function TestImageUpload() {
       if (!image) {
         throw new Error('Image not found')
       }
-      
+
       // Delete file from Snowflake via API
       const response = await fetch(`/api/snowflake/files/${image.filename}`, {
         method: 'DELETE'
       })
-      
+
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Delete failed')
       }
-      
+
       const result = await response.json()
-      
+
       setUploadedImages(prev => prev.filter(img => img.id !== imageId))
       toast.success("Image deleted from Snowflake stage")
     } catch (error) {
@@ -230,13 +232,13 @@ export default function TestImageUpload() {
               <CardContent className="space-y-6">
                 {/* File Uploader */}
                 <div>
-                                     <FileUploader
-                     onFileSelect={handleFileSelect}
-                     acceptedTypes="image/jpeg,image/png,image/gif,image/webp"
-                     maxSize={5} // 5MB
-                     placeholder="Drag and drop an image here, or click to browse"
-                     className="min-h-[200px]"
-                   />
+                  <FileUploader
+                    onFileSelect={handleFileSelect}
+                    acceptedTypes="image/jpeg,image/png,image/gif,image/webp"
+                    maxSize={5} // 5MB
+                    placeholder="Drag and drop an image here, or click to browse"
+                    className="min-h-[200px]"
+                  />
                 </div>
 
                 {/* Selected File Info */}
@@ -259,7 +261,7 @@ export default function TestImageUpload() {
                 >
                   {isUploading ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <InlineLoader size="sm" className="mr-2" />
                       Uploading to Snowflake...
                     </>
                   ) : (
@@ -294,19 +296,19 @@ export default function TestImageUpload() {
                   View and manage images uploaded to Snowflake stage
                 </CardDescription>
               </CardHeader>
-                             <CardContent>
-                 {isLoadingFiles ? (
-                   <div className="text-center py-12">
-                     <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
-                     <p className="text-slate-500">Loading files from Snowflake stage...</p>
-                   </div>
-                 ) : uploadedImages.length === 0 ? (
-                   <div className="text-center py-12">
-                     <Upload className="h-12 w-12 mx-auto text-slate-400 mb-4" />
-                     <p className="text-slate-500">No images uploaded yet</p>
-                     <p className="text-sm text-slate-400">Upload an image to see it here</p>
-                   </div>
-                 ) : (
+              <CardContent>
+                {isLoadingFiles ? (
+                  <div className="text-center py-12">
+                    <GeometricLoader size="md" />
+                    <p className="mt-4 text-slate-500">Loading files from Snowflake stage...</p>
+                  </div>
+                ) : uploadedImages.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Upload className="h-12 w-12 mx-auto text-slate-400 mb-4" />
+                    <p className="text-slate-500">No images uploaded yet</p>
+                    <p className="text-sm text-slate-400">Upload an image to see it here</p>
+                  </div>
+                ) : (
                   <div className="space-y-4">
                     {uploadedImages.map((image) => (
                       <div key={image.id} className="p-4 border rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors">
@@ -321,7 +323,7 @@ export default function TestImageUpload() {
                               />
                             </div>
                           )}
-                          
+
                           {/* Image Info */}
                           <div className="flex-1 min-w-0">
                             <h4 className="font-medium text-slate-900 truncate">{image.filename}</h4>
@@ -344,7 +346,7 @@ export default function TestImageUpload() {
                               disabled={isFetching}
                             >
                               {isFetching ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <InlineLoader size="sm" />
                               ) : (
                                 <Download className="h-4 w-4" />
                               )}
@@ -390,7 +392,7 @@ export default function TestImageUpload() {
                   <p className="text-purple-800">Internal Stage</p>
                 </div>
               </div>
-              
+
               <div className="mt-4 p-4 bg-slate-50 rounded-lg">
                 <h4 className="font-medium text-slate-900 mb-2">SQL Commands for Testing:</h4>
                 <div className="space-y-2 text-sm font-mono text-slate-700">

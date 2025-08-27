@@ -8,7 +8,8 @@ export const giftRequestFormSchema = z.object({
   memberLogin: z.string().min(1, 'Member login is required'),
   memberId: z.number().min(1, 'Member ID is required'),
   giftItem: z.string().min(1, 'Gift item is required'),
-  rewardName: z.string().optional(),
+  rewardName: z.string().min(1, 'Reward name is required')
+    .refine((val) => REWARD_NAME_OPTIONS.includes(val as RewardName), 'Please select a valid reward name'),
   rewardClubOrder: z.string().optional(),
   value: z
     .string()
@@ -22,7 +23,7 @@ export const giftRequestFormSchema = z.object({
   category: z
     .string()
     .min(1, 'Category is required')
-    .refine((val) => ['Birthday', 'Retention', 'High Roller', 'Promotion', 'Other'].includes(val), 'Please select a valid category'),
+    .refine((val) => ['Birthday Gift', 'Offline Campaign', 'Online Campaign', 'Festival Gift', 'Leaderboard', 'Loyalty Gift', 'Rewards Club', 'Others'].includes(val), 'Please select a valid category'),
 })
 
 export type GiftRequestFormSchema = z.infer<typeof giftRequestFormSchema>
@@ -44,14 +45,14 @@ export type TrackingStatus =
   | 'Returned'
 
 export type GiftCategory = 
-  | 'Electronics' 
-  | 'Fashion' 
-  | 'Home & Living' 
-  | 'Sports & Outdoor' 
-  | 'Beauty & Health' 
-  | 'Books & Media' 
-  | 'Food & Beverages' 
-  | 'Other'
+  | 'Birthday Gift'
+  | 'Offline Campaign'
+  | 'Online Campaign'
+  | 'Festival Gift'
+  | 'Leaderboard'
+  | 'Loyalty Gift'
+  | 'Rewards Club'
+  | 'Others'
 
 // Base gift details interface (raw table data)
 export interface GiftRequestDetailsTable {
@@ -160,15 +161,44 @@ export enum TrackingStatusEnum {
 }
 
 export enum GiftCategoryEnum {
-  ELECTRONICS = 'Electronics',
-  FASHION = 'Fashion',
-  HOME_LIVING = 'Home & Living',
-  SPORTS_OUTDOOR = 'Sports & Outdoor',
-  BEAUTY_HEALTH = 'Beauty & Health',
-  BOOKS_MEDIA = 'Books & Media',
-  FOOD_BEVERAGES = 'Food & Beverages',
-  OTHER = 'Other'
+  BIRTHDAY_GIFT = 'Birthday Gift',
+  OFFLINE_CAMPAIGN = 'Offline Campaign',
+  ONLINE_CAMPAIGN = 'Online Campaign',
+  FESTIVAL_GIFT = 'Festival Gift',
+  LEADERBOARD = 'Leaderboard',
+  LOYALTY_GIFT = 'Loyalty Gift',
+  REWARDS_CLUB = 'Rewards Club',
+  OTHERS = 'Others'
 }
+
+// Reward name options for dropdown
+export const REWARD_NAME_OPTIONS = [
+  'Alcohol & Beverages',
+  'Concerts',
+  'Electronics Devices',
+  'Flight',
+  'Fine-Dining',
+  'Hotel Staycation',
+  'Luxury Gifts',
+  'Special Events',
+  'Voucher & Coupons',
+  'Festival Gifts',
+  'Others'
+] as const
+
+export type RewardName = typeof REWARD_NAME_OPTIONS[number]
+
+// Category options for dropdown
+export const CATEGORY_OPTIONS = [
+  'Birthday Gift',
+  'Offline Campaign',
+  'Online Campaign',
+  'Festival Gift',
+  'Leaderboard',
+  'Loyalty Gift',
+  'Rewards Club',
+  'Others'
+] as const
 
 // Bulk Import Types
 export interface BulkImportBatch {

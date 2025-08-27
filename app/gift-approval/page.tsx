@@ -19,6 +19,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Skeleton } from '@/components/ui/skeleton'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Plus, Eye, Upload, CheckCircle, XCircle, Clock, Search, FileText, Truck, Shield, Calendar, User, Package, CheckSquare, Download, ArrowRight, ClipboardCheck, Edit, Users, AlertCircle, UserPlus, Camera, CheckCircle2, Circle, Loader2 } from 'lucide-react'
+import GeometricLoader from "@/components/ui/geometric-loader";
+import InlineLoader from "@/components/ui/inline-loader";
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -29,6 +31,7 @@ import { FileUploader } from '@/components/ui/file-uploader'
 import ImagePopup from '@/components/ui/image-popup'
 
 import type { GiftRequestDetails, GiftRequestDetailsView, GiftCategory, WorkflowStatus, TrackingStatus, GiftRequestForm } from '@/types/gift'
+import { REWARD_NAME_OPTIONS, CATEGORY_OPTIONS } from '@/types/gift'
 import { useMemberProfiles, useMemberValidation } from '@/contexts/member-profile-context'
 
 // Workflow Timeline Component
@@ -674,7 +677,7 @@ export default function Gifts() {
     }
 
     // Validate all required fields
-    if (!requestForm.memberLogin || !requestForm.giftItem || !requestForm.value || !requestForm.category) {
+    if (!requestForm.memberLogin || !requestForm.giftItem || !requestForm.rewardName || !requestForm.value || !requestForm.category) {
       toast.error('Please fill in all required fields')
       return
     }
@@ -1743,48 +1746,51 @@ export default function Gifts() {
       return
     }
 
-    const selectedRows = Object.keys(rowSelection)
-    if (selectedRows.length === 0) {
+    const selectedGiftIds = getSelectedGiftIds()
+    if (selectedGiftIds.length === 0) {
       toast.error('Please select at least one gift to export')
       return
     }
 
-    const selectedGifts = gifts.filter((_, index) => selectedRows.includes(index.toString()))
+    const selectedGifts = gifts.filter((gift) => selectedGiftIds.includes(gift.giftId))
 
-    // Format data according to the specification
+    // Format data according to the new specification
     const formattedData = selectedGifts.map((gift) => ({
-      Date: gift.createdDate ? gift.createdDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '',
-      PIC: gift.kamRequestedBy || '',
-      'Member Login': gift.memberLogin || '',
-      'Full Name': gift.fullName || '',
-      'HP Number': gift.phone || '',
-      Address: gift.address || '',
-      'Reward Name': gift.rewardName || '',
-      'Gift Cost (MYR)': gift.costMyr ? gift.costMyr.toString() : '',
-      'Cost (VND)': gift.costVnd ? gift.costVnd.toString() : '',
-      Remark: gift.remark || '',
-      'Reward Club Order': gift.rewardClubOrder || '',
-      Category: gift.category || '',
-      Dispatcher: gift.dispatcher || '',
-      'Tracking Code': gift.trackingCode || '',
-      Status: gift.trackingStatus || '',
-      'Uploaded BO': gift.uploadedBo ? 'Yes' : 'No',
-      'MKTOps Proof': gift.mktProof || '',
-      'KAM Proof': gift.kamProof || '',
-      'Checker Name': gift.auditorName || 'Unknown',
-      'Checked Date': gift.auditDate ? gift.auditDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'long' }) : '',
-      'Audit Remark': gift.auditRemark || '',
+      memberLogin: gift.memberLogin || '',
+      startTime: gift.createdDate ? gift.createdDate.toLocaleString('en-US', {
+        month: '2-digit',
+        day: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      }).replace(',', '') : '',
+      endTime: gift.lastModifiedDate ? gift.lastModifiedDate.toLocaleString('en-US', {
+        month: '2-digit',
+        day: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      }).replace(',', '') : '',
+      amount: gift.costMyr || gift.costVnd || 0,
+      name: gift.rewardName || '',
+      description: gift.remark || '',
+      category: gift.category || '',
+      categoryTitle: '', // Leave empty as requested
     }))
 
     exportToCSV(formattedData, `bulk_gifts_${new Date().toISOString().split('T')[0]}`)
-    toast.success(`Exported ${selectedRows.length} gifts to CSV`)
+    toast.success(`Exported ${selectedGiftIds.length} gifts to CSV`)
 
     // Log export activity
     await logActivity('BULK_EXPORT', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
-      exportedCount: selectedRows.length,
+      exportedCount: selectedGiftIds.length,
       exportType: 'csv',
       activeTab: activeTab,
-      remark: `Exported ${selectedRows.length} gifts to CSV`,
+      remark: `Exported ${selectedGiftIds.length} gifts to CSV`,
     })
   }
 
@@ -2311,7 +2317,7 @@ export default function Gifts() {
                   }
                 >
                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-pointer text-green-600 hover:text-green-700" onClick={() => handleApproveGift(gift.giftId)} title="Approve Gift" disabled={isApprovingGift === gift.giftId}>
-                    {isApprovingGift === gift.giftId ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                    {isApprovingGift === gift.giftId ? <InlineLoader size="sm" /> : <CheckCircle className="h-4 w-4" />}
                   </Button>
                 </RoleBasedActionPermission>
 
@@ -2337,7 +2343,7 @@ export default function Gifts() {
                     title="Reject Gift"
                     disabled={isRejectingGift === gift.giftId}
                   >
-                    {isRejectingGift === gift.giftId ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                    {isRejectingGift === gift.giftId ? <InlineLoader size="sm" /> : <XCircle className="h-4 w-4" />}
                   </Button>
                 </RoleBasedActionPermission>
               </>
@@ -2374,7 +2380,7 @@ export default function Gifts() {
                     title="Update MKTOps Info"
                     disabled={isUpdatingMKTOps === gift.giftId}
                   >
-                    {isUpdatingMKTOps === gift.giftId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
+                    {isUpdatingMKTOps === gift.giftId ? <InlineLoader size="sm" /> : <Truck className="h-4 w-4" />}
                   </Button>
                 </RoleBasedActionPermission>
 
@@ -2465,7 +2471,7 @@ export default function Gifts() {
                   title="Submit KAM Proof"
                   disabled={isSubmittingKAMProof === gift.giftId}
                 >
-                  {isSubmittingKAMProof === gift.giftId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {isSubmittingKAMProof === gift.giftId ? <InlineLoader size="sm" /> : <Upload className="h-4 w-4" />}
                 </Button>
               </RoleBasedActionPermission>
             )}
@@ -2569,8 +2575,8 @@ export default function Gifts() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
-          <p className="text-gray-600">Loading your dashboard...</p>
+          <GeometricLoader size="lg" />
+          <p className="mt-4 text-gray-600 text-sm">Loading your dashboard...</p>
         </div>
       </div>
     )
@@ -2753,9 +2759,20 @@ export default function Gifts() {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="rewardName" className="text-sm font-medium">
-                            Reward Name
+                            Reward Name <span className="text-red-500">*</span>
                           </Label>
-                          <Input id="rewardName" placeholder="Enter reward name (optional)" value={requestForm.rewardName} onChange={(e) => handleFormChange('rewardName', e.target.value)} />
+                          <Select value={requestForm.rewardName} onValueChange={(value) => handleFormChange('rewardName', value)}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select reward name" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {REWARD_NAME_OPTIONS.map((option) => (
+                                <SelectItem key={option} value={option}>
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
 
                         <div className="space-y-2">
@@ -2796,18 +2813,18 @@ export default function Gifts() {
                             <SelectValue placeholder="Select category" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Birthday">Birthday</SelectItem>
-                            <SelectItem value="Retention">Retention</SelectItem>
-                            <SelectItem value="High Roller">High Roller</SelectItem>
-                            <SelectItem value="Promotion">Promotion</SelectItem>
-                            <SelectItem value="Other">Other</SelectItem>
+                            {CATEGORY_OPTIONS.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
 
                       <div className="space-y-2">
                         <Label htmlFor="remark" className="text-sm font-medium">
-                          Remark
+                          Description
                         </Label>
                         <Textarea id="remark" placeholder="Enter detailed remarks about this gift request (optional)" value={requestForm.remark} onChange={(e) => handleFormChange('remark', e.target.value)} rows={4} />
                       </div>
@@ -3494,7 +3511,8 @@ export default function Gifts() {
                       )}
 
                       {/* EXPORT ACTION - Available for all tabs */}
-                      <ManagerAndAboveActionWithPermission
+                      <RoleBasedActionPermission
+                        allowedRoles={['KAM', 'ADMIN', 'AUDIT', 'MANAGER', 'MKTOPS']}
                         module="gift-approval"
                         permission="EXPORT"
                         disabledFallback={
@@ -3508,7 +3526,7 @@ export default function Gifts() {
                           <FileText className="h-4 w-4 mr-2" />
                           Export ({Object.keys(rowSelection).length})
                         </Button>
-                      </ManagerAndAboveActionWithPermission>
+                      </RoleBasedActionPermission>
                     </div>
                   </div>
                 </div>

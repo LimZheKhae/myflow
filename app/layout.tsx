@@ -26,5 +26,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 export const metadata = {
   title: 'MyFlow - Professional CRM Platform',
   description: 'Advanced customer relationship management system with VIP profiles, campaigns, and gift management.',
-  generator: 'v0.dev',
+  icons: {
+    icon: '/aetheriondataworks.jpg',
+    shortcut: '/aetheriondataworks.jpg',
+    apple: '/aetheriondataworks.jpg',
+  },
 }

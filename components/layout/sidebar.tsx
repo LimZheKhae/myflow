@@ -89,10 +89,10 @@ export default function Sidebar() {
       <div className="flex items-center justify-center h-20 border-b border-slate-700/50 bg-gradient-to-r from-slate-800 to-slate-700">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg bg-white">
-            <Image 
-              src="/aetheriondataworks.jpg" 
-              alt="MyFlow Logo" 
-              width={40} 
+            <Image
+              src="/aetheriondataworks.jpg"
+              alt="MyFlow Logo"
+              width={40}
               height={40}
               className="w-full h-full object-cover"
             />
@@ -167,7 +167,7 @@ export default function Sidebar() {
               </Link>
             )
           })}
-          
+
           {/* Profile Link */}
           <div className="mt-4 pt-4 border-t border-slate-700/50">
             <Link href={profileNavItem.href}>

@@ -8,6 +8,8 @@ import Sidebar from "@/components/layout/sidebar"
 import Header from "@/components/layout/header"
 import PermissionGuard from "@/components/common/permission-guard"
 import { Loader2, Check, X, ChevronRight, Users, UserPlus, Mail, Phone, MapPin, Settings, Shield, Globe, CreditCard } from "lucide-react"
+import GeometricLoader from "@/components/ui/geometric-loader";
+import InlineLoader from "@/components/ui/inline-loader";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -136,8 +138,8 @@ export default function UserManagementPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
-          <p className="text-gray-600">Loading your dashboard...</p>
+          <GeometricLoader size="lg" />
+          <p className="mt-4 text-gray-600 text-sm">Loading your dashboard...</p>
         </div>
       </div>
     )
@@ -938,7 +940,7 @@ export default function UserManagementPage() {
                     >
                       {isSubmitting ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          <InlineLoader size="sm" className="mr-2" />
                           {editingUser ? 'Updating...' : 'Creating...'}
                         </>
                       ) : (
@@ -953,7 +955,7 @@ export default function UserManagementPage() {
 
           {loading ? (
             <div className="flex items-center justify-center h-64">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+              <GeometricLoader size="md" />
             </div>
           ) : selectedDepartment ? (
             <div>

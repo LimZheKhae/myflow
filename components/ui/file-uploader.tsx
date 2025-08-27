@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { Upload, X, FileText, Image, File } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ interface FileUploaderProps {
   className?: string;
   placeholder?: string;
   disabled?: boolean;
+  reset?: boolean; // Add reset prop to trigger state reset
 }
 
 export const FileUploader: React.FC<FileUploaderProps> = ({
@@ -22,13 +23,27 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
   multiple = false,
   className,
   placeholder = "Drag and drop files here, or click to browse",
-  disabled = false
+  disabled = false,
+  reset = false
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [error, setError] = useState<string>("");
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Reset component state when reset prop is true
+  useEffect(() => {
+    if (reset) {
+      setSelectedFile(null);
+      setError("");
+      setPreviewUrl("");
+      setIsDragOver(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }, [reset]);
 
   const validateFile = (file: File): boolean => {
     // Check file size
@@ -60,7 +75,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     if (validateFile(file)) {
       setSelectedFile(file);
       onFileSelect(file);
-      
+
       // Create preview URL for images
       if (file.type.startsWith("image/")) {
         const url = URL.createObjectURL(file);
@@ -145,7 +160,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         <div
           className={cn(
             "border-2 border-dashed rounded-lg p-6 text-center transition-all duration-200",
-            disabled 
+            disabled
               ? "border-gray-200 bg-gray-50 cursor-not-allowed opacity-50"
               : isDragOver
                 ? "border-blue-500 bg-blue-50 cursor-pointer"
@@ -184,13 +199,13 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
               <X className="h-4 w-4 text-red-500" />
             </Button>
           </div>
-          
+
           {/* Image Preview */}
           {previewUrl && selectedFile?.type.startsWith("image/") && (
             <div className="mt-3">
-              <img 
-                src={previewUrl} 
-                alt="Preview" 
+              <img
+                src={previewUrl}
+                alt="Preview"
                 className="max-w-full h-32 object-cover rounded-lg border"
               />
             </div>

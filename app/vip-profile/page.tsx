@@ -8,6 +8,7 @@ import Header from "@/components/layout/header"
 import PermissionGuard from "@/components/common/permission-guard"
 import AccessDenied from "@/components/common/access-denied"
 import { Loader2 } from "lucide-react"
+import GeometricLoader from "@/components/ui/geometric-loader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -183,7 +184,7 @@ const mockPlayers: VIPPlayer[] = [
 
 export default function VIPProfiles() {
   const { user, loading, hasPermission, canAccessMerchant, canAccessCurrency } = useAuth()
-  
+
   const [searchMemberName, setSearchMemberName] = useState("")
   const [searchPlayerId, setSearchPlayerId] = useState("")
   const [searchKAM, setSearchKAM] = useState("")
@@ -203,8 +204,8 @@ export default function VIPProfiles() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
-          <p className="text-gray-600">Loading your dashboard...</p>
+          <GeometricLoader size="lg" />
+          <p className="mt-4 text-gray-600 text-sm">Loading your dashboard...</p>
         </div>
       </div>
     )
@@ -332,13 +333,13 @@ export default function VIPProfiles() {
     const matchesMemberName = searchMemberName === "" || player.name.toLowerCase().includes(searchMemberName.toLowerCase())
     const matchesPlayerId = searchPlayerId === "" || player.id.toLowerCase().includes(searchPlayerId.toLowerCase())
     const matchesKAM = searchKAM === "" || player.kam.toLowerCase().includes(searchKAM.toLowerCase())
-    
+
     // Tier filter (multi-select)
     const matchesTier = selectedTiers.length === 0 || selectedTiers.includes(player.tier)
-    
+
     // Currency filter (multi-select)
     const matchesCurrency = selectedCurrencies.length === 0 || selectedCurrencies.includes(player.currency)
-    
+
     // KAM filter (multi-select)
     const matchesKAMFilter = selectedMerchants.length === 0 || selectedMerchants.includes(player.kam)
 
@@ -359,7 +360,7 @@ export default function VIPProfiles() {
       canAccessMerchant(player.kam) &&
       canAccessCurrency(player.currency) &&
       (user?.role === "ADMIN" || player.kam === user?.id)
-    
+
     return matchesMemberName && matchesPlayerId && matchesKAM && matchesTier && matchesCurrency && matchesKAMFilter && matchesBirthdayRange && hasAccess
   })
 
@@ -369,191 +370,191 @@ export default function VIPProfiles() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header title="VIP Profile Management" description="Manage individual VIP player profiles and activities" />
 
-      <div className="flex-1 p-6 overflow-y-auto">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex-1 p-6 overflow-y-auto">
+          <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-4xl font-bold text-slate-900 mb-2">VIP Profile Module</h1>
               <p className="text-slate-600">Player-centric dashboard - Full CRM card for each VIP player</p>
-          </div>
-          <PermissionGuard module="vip-profile" permission="ADD">
+            </div>
+            <PermissionGuard module="vip-profile" permission="ADD">
               <Link href="/vip-profiles/new" className="cursor-pointer">
                 <Button className="bg-purple-600 hover:bg-purple-700 cursor-pointer">
                   <Plus className="h-4 w-4 mr-2" />
-              Add VIP Player
-            </Button>
+                  Add VIP Player
+                </Button>
               </Link>
-          </PermissionGuard>
-        </div>
-
-        {/* Search and Filters */}
-        <Card className="mb-6 border-0 shadow-lg">
-          <CardHeader>
-            <CardTitle>Search & Filter</CardTitle>
-              </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* Search Fields Row */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                  <Label htmlFor="member-name-search">Member Name</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                    <Input
-                      id="member-name-search"
-                      placeholder="Search by member name..."
-                      value={pendingMemberName}
-                      onChange={(e) => setPendingMemberName(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                          </div>
-                          <div>
-                  <Label htmlFor="player-id-search">Player ID</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                    <Input
-                      id="player-id-search"
-                      placeholder="Search by player ID..."
-                      value={pendingPlayerId}
-                      onChange={(e) => setPendingPlayerId(e.target.value)}
-                      className="pl-10"
-                    />
-                          </div>
-                        </div>
-                <div>
-                  <Label htmlFor="kam-search">KAM</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                    <Input
-                      id="kam-search"
-                      placeholder="Search by KAM..."
-                      value={pendingKAM}
-                      onChange={(e) => setPendingKAM(e.target.value)}
-                      className="pl-10"
-                    />
-                      </div>
-                    </div>
-                <div>
-                  <Label>Tier</Label>
-                  <MultiSelect
-                    options={[
-                      { value: "Diamond", label: "Diamond" },
-                      { value: "Platinum", label: "Platinum" },
-                      { value: "Gold", label: "Gold" },
-                      { value: "Silver", label: "Silver" },
-                      { value: "Bronze", label: "Bronze" },
-                    ]}
-                    selectedValues={pendingFilters.tiers}
-                    onSelectionChange={(vals) => setPendingFilters((p) => ({ ...p, tiers: vals }))}
-                    placeholder="Filter by Tier"
-                    label="Select Tiers"
-                  />
-                </div>
+            </PermissionGuard>
           </div>
 
-              {/* Filter Fields Row */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                  <Label>Currency</Label>
-                  <MultiSelect
-                    options={[
-                      { value: "USD", label: "USD" },
-                      { value: "SGD", label: "SGD" },
-                      { value: "MYR", label: "MYR" },
-                    ]}
-                    selectedValues={pendingFilters.currencies}
-                    onSelectionChange={(vals) => setPendingFilters((p) => ({ ...p, currencies: vals }))}
-                    placeholder="Filter by Currency"
-                    label="Select Currencies"
-                  />
-                      </div>
-                      <div>
-                  <Label>Merchants Filter</Label>
-                  <MultiSelect
-                    options={[
-                      { value: "Alpha", label: "Alpha" },
-                      { value: "Beta", label: "Beta" },
-                    ]}
-                    selectedValues={pendingFilters.merchants}
-                    onSelectionChange={(vals) => setPendingFilters((p) => ({ ...p, merchants: vals }))}
-                    placeholder="Filter by Merchant"
-                    label="Select Merchant"
-                  />
-                      </div>
-                      <div>
-                          <Label>Birthday Range</Label>
-                          <DateRangePicker
-                            date={pendingBirthdayRange}
-                            onDateChange={setPendingBirthdayRange}
-                            placeholder="Pick a birthday range"
-                            formatDate={formatDateDDMMYYYY}
-                          />
-                      </div>
-                <div></div>
-                    </div>
-
-              {/* Action Buttons Row */}
-              <div className="flex justify-end gap-2">
-                        <Button
-                  onClick={() => {
-                    setSearchMemberName(pendingMemberName)
-                    setSearchPlayerId(pendingPlayerId)
-                    setSearchKAM(pendingKAM)
-                    setSelectedTiers(pendingFilters.tiers)
-                    setSelectedCurrencies(pendingFilters.currencies)
-                    setSelectedMerchants(pendingFilters.merchants)
-                    setBirthdayRange(pendingBirthdayRange)
-                    setIsTableLoading(true)
-                    setTimeout(() => setIsTableLoading(false), 500)
-                  }}
-                >
-                  Apply Filters
-                      </Button>
-                      <Button
-                        variant="outline"
-                  onClick={() => {
-                    setPendingMemberName("")
-                    setPendingPlayerId("")
-                    setPendingKAM("")
-                    setPendingFilters({ tiers: [], currencies: [], merchants: [] })
-                    setPendingBirthdayRange(undefined)
-                    setSearchMemberName("")
-                    setSearchPlayerId("")
-                    setSearchKAM("")
-                    setSelectedTiers([])
-                    setSelectedCurrencies([])
-                    setSelectedMerchants([])
-                    setBirthdayRange(undefined)
-                    setIsTableLoading(true)
-                    setTimeout(() => setIsTableLoading(false), 300)
-                  }}
-                >
-                  Clear
-                      </Button>
+          {/* Search and Filters */}
+          <Card className="mb-6 border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle>Search & Filter</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Search Fields Row */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <Label htmlFor="member-name-search">Member Name</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                      <Input
+                        id="member-name-search"
+                        placeholder="Search by member name..."
+                        value={pendingMemberName}
+                        onChange={(e) => setPendingMemberName(e.target.value)}
+                        className="pl-10"
+                      />
                     </div>
                   </div>
-          </CardContent>
-        </Card>
+                  <div>
+                    <Label htmlFor="player-id-search">Player ID</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                      <Input
+                        id="player-id-search"
+                        placeholder="Search by player ID..."
+                        value={pendingPlayerId}
+                        onChange={(e) => setPendingPlayerId(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="kam-search">KAM</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                      <Input
+                        id="kam-search"
+                        placeholder="Search by KAM..."
+                        value={pendingKAM}
+                        onChange={(e) => setPendingKAM(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Tier</Label>
+                    <MultiSelect
+                      options={[
+                        { value: "Diamond", label: "Diamond" },
+                        { value: "Platinum", label: "Platinum" },
+                        { value: "Gold", label: "Gold" },
+                        { value: "Silver", label: "Silver" },
+                        { value: "Bronze", label: "Bronze" },
+                      ]}
+                      selectedValues={pendingFilters.tiers}
+                      onSelectionChange={(vals) => setPendingFilters((p) => ({ ...p, tiers: vals }))}
+                      placeholder="Filter by Tier"
+                      label="Select Tiers"
+                    />
+                  </div>
+                </div>
 
-        {/* Players Table */}
-        <Card className="border-0 shadow-lg">
-          <CardHeader>
-            <CardTitle>VIP Players ({filteredPlayers.length})</CardTitle>
-            <CardDescription>Manage your assigned VIP players and their engagement history</CardDescription>
-                </CardHeader>
-                <CardContent>
-            {isTableLoading ? (
-              <div className="space-y-3">
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="h-10 bg-slate-200 rounded animate-pulse" />
-                ))}
-                      </div>
-            ) : (
-              <DataTable columns={columns} data={filteredPlayers} />
-            )}
-                </CardContent>
-              </Card>
-      </div>
+                {/* Filter Fields Row */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <Label>Currency</Label>
+                    <MultiSelect
+                      options={[
+                        { value: "USD", label: "USD" },
+                        { value: "SGD", label: "SGD" },
+                        { value: "MYR", label: "MYR" },
+                      ]}
+                      selectedValues={pendingFilters.currencies}
+                      onSelectionChange={(vals) => setPendingFilters((p) => ({ ...p, currencies: vals }))}
+                      placeholder="Filter by Currency"
+                      label="Select Currencies"
+                    />
+                  </div>
+                  <div>
+                    <Label>Merchants Filter</Label>
+                    <MultiSelect
+                      options={[
+                        { value: "Alpha", label: "Alpha" },
+                        { value: "Beta", label: "Beta" },
+                      ]}
+                      selectedValues={pendingFilters.merchants}
+                      onSelectionChange={(vals) => setPendingFilters((p) => ({ ...p, merchants: vals }))}
+                      placeholder="Filter by Merchant"
+                      label="Select Merchant"
+                    />
+                  </div>
+                  <div>
+                    <Label>Birthday Range</Label>
+                    <DateRangePicker
+                      date={pendingBirthdayRange}
+                      onDateChange={setPendingBirthdayRange}
+                      placeholder="Pick a birthday range"
+                      formatDate={formatDateDDMMYYYY}
+                    />
+                  </div>
+                  <div></div>
+                </div>
+
+                {/* Action Buttons Row */}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    onClick={() => {
+                      setSearchMemberName(pendingMemberName)
+                      setSearchPlayerId(pendingPlayerId)
+                      setSearchKAM(pendingKAM)
+                      setSelectedTiers(pendingFilters.tiers)
+                      setSelectedCurrencies(pendingFilters.currencies)
+                      setSelectedMerchants(pendingFilters.merchants)
+                      setBirthdayRange(pendingBirthdayRange)
+                      setIsTableLoading(true)
+                      setTimeout(() => setIsTableLoading(false), 500)
+                    }}
+                  >
+                    Apply Filters
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setPendingMemberName("")
+                      setPendingPlayerId("")
+                      setPendingKAM("")
+                      setPendingFilters({ tiers: [], currencies: [], merchants: [] })
+                      setPendingBirthdayRange(undefined)
+                      setSearchMemberName("")
+                      setSearchPlayerId("")
+                      setSearchKAM("")
+                      setSelectedTiers([])
+                      setSelectedCurrencies([])
+                      setSelectedMerchants([])
+                      setBirthdayRange(undefined)
+                      setIsTableLoading(true)
+                      setTimeout(() => setIsTableLoading(false), 300)
+                    }}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Players Table */}
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle>VIP Players ({filteredPlayers.length})</CardTitle>
+              <CardDescription>Manage your assigned VIP players and their engagement history</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isTableLoading ? (
+                <div className="space-y-3">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="h-10 bg-slate-200 rounded animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <DataTable columns={columns} data={filteredPlayers} />
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   )

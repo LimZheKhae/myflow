@@ -13,7 +13,7 @@ import { Progress } from '@/components/ui/progress'
 import { toast } from 'sonner'
 import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Download, Eye, Database } from 'lucide-react'
 import Papa from 'papaparse'
-import { giftRequestFormSchema } from '@/types/gift'
+import { giftRequestFormSchema, REWARD_NAME_OPTIONS, CATEGORY_OPTIONS } from '@/types/gift'
 
 interface BulkUploadDialogProps {
   module: string
@@ -56,6 +56,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null)
   const [activeTab, setActiveTab] = useState('upload')
+  const [fileUploaderReset, setFileUploaderReset] = useState(false)
 
   // Reset function to clear all state when dialog closes
   const resetDialog = () => {
@@ -63,6 +64,12 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
     setUploadResult(null)
     setActiveTab('upload')
     setIsUploading(false)
+    setFileUploaderReset(true)
+
+    // Reset the file uploader reset flag after a short delay
+    setTimeout(() => {
+      setFileUploaderReset(false)
+    }, 100)
   }
 
   // CSV validation rules based on module and tab
@@ -75,7 +82,8 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
           fieldTypes: {
             costMyr: 'number',
             costLocal: 'number',
-            category: ['Birthday', 'Retention', 'High Roller', 'Promotion', 'Other'],
+            category: CATEGORY_OPTIONS,
+            rewardName: REWARD_NAME_OPTIONS,
           },
         },
         processing: {
@@ -229,9 +237,30 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
               if (!row.category || row.category.toString().trim() === '') {
                 errors.push(`Row ${rowNumber}: Missing required field "category"`)
                 rowValid = false
-              } else if (!['Birthday', 'Retention', 'High Roller', 'Promotion', 'Other'].includes(row.category)) {
-                errors.push(`Row ${rowNumber}: Invalid category. Expected one of: Birthday, Retention, High Roller, Promotion, Other`)
+              } else {
+                const normalizedCategory = row.category.trim()
+                const isValidCategory = CATEGORY_OPTIONS.some(option =>
+                  option.toLowerCase() === normalizedCategory.toLowerCase()
+                )
+                if (!isValidCategory) {
+                  errors.push(`Row ${rowNumber}: Invalid category "${normalizedCategory}". Expected one of: ${CATEGORY_OPTIONS.join(', ')}`)
+                  rowValid = false
+                }
+              }
+
+              // Validate rewardName is required
+              if (!row.rewardName || row.rewardName.toString().trim() === '') {
+                errors.push(`Row ${rowNumber}: Missing required field "rewardName"`)
                 rowValid = false
+              } else {
+                const normalizedRewardName = row.rewardName.trim()
+                const isValidRewardName = REWARD_NAME_OPTIONS.some(option =>
+                  option.toLowerCase() === normalizedRewardName.toLowerCase()
+                )
+                if (!isValidRewardName) {
+                  errors.push(`Row ${rowNumber}: Invalid reward name "${normalizedRewardName}". Expected one of: ${REWARD_NAME_OPTIONS.join(', ')}`)
+                  rowValid = false
+                }
               }
 
               // Validate costMyr (required) and costLocal (optional)
@@ -252,18 +281,27 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                 // Get member currency for automatic currency assignment
                 const memberCurrency = memberData.currency || 'MYR'
 
+                // Normalize category and rewardName to proper case
+                const normalizedCategory = CATEGORY_OPTIONS.find(option =>
+                  option.toLowerCase() === row.category.trim().toLowerCase()
+                ) || row.category.trim()
+
+                const normalizedRewardName = REWARD_NAME_OPTIONS.find(option =>
+                  option.toLowerCase() === row.rewardName?.trim().toLowerCase()
+                ) || row.rewardName?.trim() || ''
+
                 // Transform CSV row to match Zod schema format with the member data
                 const giftRequestData = {
                   memberName: memberData.memberName || row.memberLogin.trim(),
                   memberLogin: row.memberLogin.trim(),
                   memberId: memberData.memberId,
                   giftItem: row.giftItem.trim(),
-                  rewardName: row.rewardName?.trim() || '',
+                  rewardName: normalizedRewardName,
                   rewardClubOrder: row.rewardClubOrder?.trim() || '',
                   value: costMyr ? costMyr.toString() : '',
                   valueLocal: costLocal ? costLocal.toString() : '',
-                  remark: row.remark?.trim() || '',
-                  category: row.category.trim(),
+                  description: (row.description || row.remark)?.trim() || '', // Handle both 'description' and 'remark' fields
+                  category: normalizedCategory,
                 }
 
                 // Validate using Zod schema
@@ -276,9 +314,12 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                   costMyr: costMyr,
                   costLocal: costLocal,
                   currency: memberCurrency,
+                  remark: (row.description || row.remark)?.trim() || '', // Keep original description/remark for frontend display
+                  description: (row.description || row.remark)?.trim() || '', // Use description for backend
                   _rowNumber: rowNumber,
                   _uploadDate: new Date().toISOString(),
-                  _uploadedBy: user?.id!,
+                  _uploadedBy: user?.id!, // Keep ID for backend
+                  _uploadedByName: user?.name || user?.email || user?.id || 'Unknown User', // Add name for frontend display
                 })
               }
             }
@@ -353,9 +394,30 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                 if (!row.category || row.category.toString().trim() === '') {
                   errors.push(`Row ${rowNumber}: Missing required field "category"`)
                   rowValid = false
-                } else if (!['Birthday', 'Retention', 'High Roller', 'Promotion', 'Other'].includes(row.category)) {
-                  errors.push(`Row ${rowNumber}: Invalid category. Expected one of: Birthday, Retention, High Roller, Promotion, Other`)
+                } else {
+                  const normalizedCategory = row.category.trim()
+                  const isValidCategory = CATEGORY_OPTIONS.some(option =>
+                    option.toLowerCase() === normalizedCategory.toLowerCase()
+                  )
+                  if (!isValidCategory) {
+                    errors.push(`Row ${rowNumber}: Invalid category "${normalizedCategory}". Expected one of: ${CATEGORY_OPTIONS.join(', ')}`)
+                    rowValid = false
+                  }
+                }
+
+                // Validate rewardName is required
+                if (!row.rewardName || row.rewardName.toString().trim() === '') {
+                  errors.push(`Row ${rowNumber}: Missing required field "rewardName"`)
                   rowValid = false
+                } else {
+                  const normalizedRewardName = row.rewardName.trim()
+                  const isValidRewardName = REWARD_NAME_OPTIONS.some(option =>
+                    option.toLowerCase() === normalizedRewardName.toLowerCase()
+                  )
+                  if (!isValidRewardName) {
+                    errors.push(`Row ${rowNumber}: Invalid reward name "${normalizedRewardName}". Expected one of: ${REWARD_NAME_OPTIONS.join(', ')}`)
+                    rowValid = false
+                  }
                 }
 
                 // Validate costMyr (required) and costLocal (optional)
@@ -373,17 +435,26 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                 }
 
                 if (rowValid) {
+                  // Normalize category and rewardName to proper case
+                  const normalizedCategory = CATEGORY_OPTIONS.find(option =>
+                    option.toLowerCase() === row.category.trim().toLowerCase()
+                  ) || row.category.trim()
+
+                  const normalizedRewardName = REWARD_NAME_OPTIONS.find(option =>
+                    option.toLowerCase() === row.rewardName?.trim().toLowerCase()
+                  ) || row.rewardName?.trim() || ''
+
                   // Transform CSV row to match Zod schema format with the member data
                   const giftRequestData = {
                     memberName: row.memberLogin.trim(), // Use memberLogin as memberName for now
                     memberLogin: row.memberLogin.trim(),
                     giftItem: row.giftItem.trim(),
-                    rewardName: row.rewardName?.trim() || '',
+                    rewardName: normalizedRewardName,
                     rewardClubOrder: row.rewardClubOrder?.trim() || '',
                     value: costMyr ? costMyr.toString() : '',
                     valueLocal: costLocal ? costLocal.toString() : '',
-                    remark: row.remark?.trim() || '',
-                    category: row.category.trim(),
+                    description: (row.description || row.remark)?.trim() || '', // Handle both 'description' and 'remark' fields
+                    category: normalizedCategory,
                   }
 
                   // Validate using Zod schema
@@ -395,9 +466,12 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                     costMyr: costMyr,
                     costLocal: costLocal,
                     currency: 'MYR', // Default currency when member validation fails
+                    remark: (row.description || row.remark)?.trim() || '', // Keep original description/remark for frontend display
+                    description: (row.description || row.remark)?.trim() || '', // Use description for backend
                     _rowNumber: rowNumber,
                     _uploadDate: new Date().toISOString(),
-                    _uploadedBy: user?.id!,
+                    _uploadedBy: user?.id!, // Keep ID for backend
+                    _uploadedByName: user?.name || user?.email || user?.id || 'Unknown User', // Add name for frontend display
                   })
                 }
               }
@@ -456,7 +530,8 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
               ...row,
               _rowNumber: rowNumber,
               _uploadDate: new Date().toISOString(),
-              _uploadedBy: user?.id!, // This would come from auth context
+              _uploadedBy: user?.id!, // Keep ID for backend
+              _uploadedByName: user?.name || user?.email || user?.id || 'Unknown User', // Add name for frontend display
             })
           }
         }
@@ -612,18 +687,19 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
     }
 
     // Special template for pending tab (gift requests)
+    // Note: CSV uses 'description' as header but backend processes as 'remark'
     if (tab === 'pending') {
       template = {
-        headers: ['memberLogin', 'giftItem', 'costMyr', 'costLocal', 'category', 'rewardName', 'rewardClubOrder', 'remark'],
+        headers: ['memberLogin', 'giftItem', 'costMyr', 'costLocal', 'category', 'rewardName', 'rewardClubOrder', 'description'],
         sample: {
           memberLogin: 'john.doe',
           giftItem: 'Gift Card',
           costMyr: '100',
-          costLocal: '500000',
-          category: 'Birthday',
-          rewardName: 'Birthday Reward',
+          costLocal: null,
+          category: 'Birthday Gift',
+          rewardName: 'Luxury Gifts',
           rewardClubOrder: 'RCO-001',
-          remark: 'Member birthday gift - costLocal is optional, leave blank for MYR players',
+          description: 'Pokemon Gift Card',
         },
       }
     } else {
@@ -701,6 +777,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                   acceptedTypes=".csv"
                   maxSize={5} // 5MB
                   disabled={isUploading}
+                  reset={fileUploaderReset}
                 />
 
                 {isUploading && (
@@ -794,21 +871,65 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 sticky top-0">
                           <tr>
-                            {Object.keys(validationResult.data[0] || {}).map((header) => (
-                              <th key={header} className="px-3 py-2 text-left font-medium whitespace-nowrap min-w-[120px]">
-                                {header}
-                              </th>
-                            ))}
+                            {Object.keys(validationResult.data[0] || {}).map((header) => {
+                              // Map backend field names to user-friendly display names
+                              const displayName = (() => {
+                                switch (header) {
+                                  case 'memberName': return 'Member Name'
+                                  case 'memberLogin': return 'Member Login'
+                                  case 'memberId': return 'Member ID'
+                                  case 'giftItem': return 'Gift Item'
+                                  case 'rewardName': return 'Reward Name'
+                                  case 'rewardClubOrder': return 'Reward Club Order'
+                                  case 'costMyr': return 'Cost (MYR)'
+                                  case 'costLocal': return 'Cost (Local)'
+                                  case 'category': return 'Category'
+                                  case 'remark': return 'Description'
+                                  case '_uploadedByName': return 'Uploaded By'
+                                  case '_uploadDate': return 'Upload Date'
+                                  case '_rowNumber': return 'Row #'
+                                  case '_uploadedBy': return 'Uploaded By ID'
+                                  case 'currency': return 'Currency'
+                                  default: return header
+                                }
+                              })()
+
+                              // Skip showing internal fields in preview
+                              if (['_uploadedBy', 'value', 'valueLocal', 'memberId', 'description', 'currency'].includes(header)) {
+                                return null
+                              }
+
+                              return (
+                                <th key={header} className="px-3 py-2 text-left font-medium whitespace-nowrap min-w-[120px]">
+                                  {displayName}
+                                </th>
+                              )
+                            }).filter(Boolean)}
                           </tr>
                         </thead>
                         <tbody>
                           {validationResult.data.slice(0, 5).map((row, index) => (
                             <tr key={index} className="border-t">
-                              {Object.values(row).map((value, cellIndex) => (
-                                <td key={cellIndex} className="px-3 py-2 whitespace-nowrap min-w-[120px]">
-                                  {String(value)}
-                                </td>
-                              ))}
+                              {Object.entries(row).map(([key, value], cellIndex) => {
+                                // Skip showing internal fields in preview
+                                if (['_uploadedBy', 'value', 'valueLocal', 'memberId', 'description', 'currency'].includes(key)) {
+                                  return null
+                                }
+
+                                // Format the display value
+                                let displayValue = String(value)
+                                if (key === '_uploadDate') {
+                                  displayValue = new Date(value as string).toLocaleString()
+                                } else if (key === 'costMyr' || key === 'costLocal') {
+                                  displayValue = value ? parseFloat(value as string).toFixed(2) : ''
+                                }
+
+                                return (
+                                  <td key={cellIndex} className="px-3 py-2 whitespace-nowrap min-w-[120px]">
+                                    {displayValue}
+                                  </td>
+                                )
+                              }).filter(Boolean)}
                             </tr>
                           ))}
                         </tbody>
