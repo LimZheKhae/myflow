@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     let importedCount = 0
     let failedCount = 0
     const failedRows: any[] = []
-    let totalValue = 0
+
     let batchId: number | undefined
     let workflowRowsUpdated = 0
 
@@ -143,16 +143,14 @@ export async function POST(request: NextRequest) {
             INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
               BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
               MEMBER_ID, MEMBER_LOGIN, REWARD_NAME, GIFT_ITEM,
-              COST_BASE, CURRENCY, COST_LOCAL, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+              GIFT_COST, CURRENCY, DESCRIPTION, REWARD_CLUB_ORDER, CATEGORY,
               LAST_MODIFIED_DATE
             ) VALUES (?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
           `
 
           // Use the validated data structure from frontend validation
-          const costMyr = parseFloat(row.value) || 0
-          const costLocal = row.valueLocal ? parseFloat(row.valueLocal) : null
+          const giftCost = parseFloat(row.value) || 0
           const currency = row.currency || 'MYR'
-          if (costMyr) totalValue += costMyr
 
           const insertParams = [
             batchId,
@@ -162,10 +160,9 @@ export async function POST(request: NextRequest) {
             row.memberLogin.trim(), // MEMBER_LOGIN from CSV
             row.rewardName?.trim() || null, // REWARD_NAME
             row.giftItem.trim(), // GIFT_ITEM
-            costMyr, // COST_BASE (always in MYR)
+            giftCost, // GIFT_COST
             currency, // CURRENCY (from member profile or default MYR)
-            costLocal, // COST_LOCAL (local currency amount, can be null)
-            row.remark?.trim() || null, // REMARK
+            row.description?.trim() || null, // DESCRIPTION
             row.rewardClubOrder?.trim() || null, // REWARD_CLUB_ORDER
             row.category.trim(), // CATEGORY
           ]
@@ -271,7 +268,7 @@ export async function POST(request: NextRequest) {
         importedCount,
         failedCount,
         batchId: batchId?.toString() || '',
-        totalValue,
+
         createdGiftIds: createdGiftIds, // Return created gift IDs for logging
         failedRows: failedRows.length > 0 ? failedRows : undefined,
       } as BulkImportResult)

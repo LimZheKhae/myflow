@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
+import { MemberProfile, MemberProfileRow } from '@/types/member-profile'
 
 // GET /api/member-profiles - Fetch all member profiles for caching
 export async function GET(request: NextRequest) {
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
         MEMBER_GROUP,
         STATUS,
         MERCHANT_ID,
+        MERCHANT_NAME,
         FTD_AMOUNT,
         TOTAL_WIN_LOSS,
         TOTAL_DEPOSIT,
@@ -47,7 +49,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform the data to match our interface
-    const memberProfiles = result.map((row: any) => ({
+    const memberProfiles: MemberProfile[] = result.map((row: MemberProfileRow) => ({
       memberId: row.MEMBER_ID,
       memberLogin: row.MEMBER_LOGIN,
       memberName: row.MEMBER_NAME,
@@ -58,6 +60,7 @@ export async function GET(request: NextRequest) {
       memberGroup: row.MEMBER_GROUP,
       status: row.STATUS,
       merchant: row.MERCHANT_ID,
+      merchantName: row.MERCHANT_NAME,
       ftdAmount: row.FTD_AMOUNT,
       totalWinLoss: row.TOTAL_WIN_LOSS,
       totalDeposit: row.TOTAL_DEPOSIT,
@@ -142,12 +145,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Process validation results
-    const foundLogins = new Set(result.map((row: any) => row.MEMBER_LOGIN.toUpperCase()))
+    const foundLogins = new Set(result.map((row: MemberProfileRow) => row.MEMBER_LOGIN.toUpperCase()))
 
     const validation = memberLogins.map((login: string) => ({
       memberLogin: login,
       isValid: foundLogins.has(login.toUpperCase()),
-      member: result.find((row: any) => row.MEMBER_LOGIN.toUpperCase() === login.toUpperCase()) || null,
+      member: result.find((row: MemberProfileRow) => row.MEMBER_LOGIN.toUpperCase() === login.toUpperCase()) || null,
     }))
 
     const validCount = validation.filter((v) => v.isValid).length

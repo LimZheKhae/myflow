@@ -23,13 +23,13 @@ export class NotificationService {
   // Get user notifications with real-time updates
   static getUserNotifications(userId: string, userRole: string, callback?: (notifications: Notification[]) => void) {
     console.log('🔔 [FRONTEND] Getting notifications for user:', { userId, userRole })
-    
+
     // Temporary: Remove the where clause to avoid index requirement
     const q = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'))
 
     return onSnapshot(q, (snapshot) => {
       console.log('🔔 [FRONTEND] Firebase snapshot received:', snapshot.docs.length, 'documents')
-      
+
       const allNotifications = snapshot.docs.map((doc) => {
         const data = doc.data()
         return {
@@ -40,8 +40,8 @@ export class NotificationService {
           expiresAt: data.expiresAt?.toDate(),
         } as Notification
       })
-      
-      console.log('🔔 [FRONTEND] All notifications before filtering:', 
+
+      console.log('🔔 [FRONTEND] All notifications before filtering:',
         allNotifications.map(n => ({
           id: n.id,
           title: n.title,
@@ -61,9 +61,9 @@ export class NotificationService {
         const isTargeted = notification.targetUserIds && notification.targetUserIds.includes(userId)
         const isRoleBased = notification.roles && notification.roles.includes(userRole)
         const isGlobalRole = notification.roles && notification.roles.length === 0
-        
+
         const shouldShow = isUnread && (isForUser || isGlobal || isTargeted || isRoleBased || isGlobalRole)
-        
+
         console.log(`🔔 [FRONTEND] Notification ${notification.id} (${notification.title}):`, {
           isUnread,
           isForUser,
@@ -78,16 +78,16 @@ export class NotificationService {
           notificationTargetUserIds: notification.targetUserIds,
           currentUserId: userId
         })
-        
+
         return shouldShow
       })
-      
-      console.log('🔔 [FRONTEND] Filtered notifications:', notifications.length, 'notifications')
+
+      // console.log('🔔 [FRONTEND] Filtered notifications:', notifications.length, 'notifications')
 
       if (callback) {
         callback(notifications)
       }
-      
+
       return notifications
     })
   }
@@ -137,10 +137,10 @@ export class NotificationService {
     try {
       // Import FirebaseAuthService to check permissions
       const { FirebaseAuthService } = await import('@/lib/firebase-auth')
-      
+
       // Get user data to check permissions
       const userData = await FirebaseAuthService.getUserData(userId)
-      
+
       // Determine which modules the user has VIEW permission for
       const moduleSettings = {
         'gift-approval': userData ? FirebaseAuthService.hasPermission(userData, 'gift-approval', 'VIEW') : false,
@@ -166,7 +166,7 @@ export class NotificationService {
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       })
-      
+
       console.log(`Default notification settings created for user: ${userId}`, {
         modules: moduleSettings,
         role: userData?.role
@@ -175,7 +175,7 @@ export class NotificationService {
       return defaultSettings
     } catch (error) {
       console.error('Error creating default notification settings:', error)
-      
+
       // Return basic default settings if everything fails
       const fallbackSettings: NotificationSettings = {
         userId,
@@ -227,7 +227,7 @@ export class NotificationService {
     try {
       const q = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'))
       const snapshot = await getDocs(q)
-      
+
       return snapshot.docs
         .map((doc) => {
           const data = doc.data()
@@ -241,10 +241,10 @@ export class NotificationService {
         })
         .filter(
           (notification) =>
-            notification.userId === userId || 
-            notification.userId === null || 
-            (notification.targetUserIds && notification.targetUserIds.includes(userId)) || 
-            (notification.roles && notification.roles.includes(userRole)) || 
+            notification.userId === userId ||
+            notification.userId === null ||
+            (notification.targetUserIds && notification.targetUserIds.includes(userId)) ||
+            (notification.roles && notification.roles.includes(userRole)) ||
             (notification.roles && notification.roles.length === 0)
         )
     } catch (error) {
@@ -261,14 +261,14 @@ export class NotificationService {
         collection(db, 'notifications'),
         where('expiresAt', '<', now)
       )
-      
+
       const snapshot = await getDocs(q)
       const batch = writeBatch(db)
-      
+
       snapshot.docs.forEach((doc) => {
         batch.delete(doc.ref)
       })
-      
+
       await batch.commit()
       console.log(`Deleted ${snapshot.docs.length} expired notifications`)
     } catch (error) {

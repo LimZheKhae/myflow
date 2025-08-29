@@ -14,7 +14,8 @@ export interface MemberProfile {
   currency?: string
   memberGroup?: string
   status?: string
-  merchant?: string
+  merchant?: string // MERCHANT_ID from database
+  merchantName?: string // MERCHANT_NAME from database
   ftdAmount?: number
   totalWinLoss?: number
   totalDeposit?: number

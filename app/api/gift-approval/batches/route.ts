@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
       const giftStatsSQL = `
         SELECT 
           COUNT(*) as giftCount,
-          SUM(COST_BASE) as totalValue
+          SUM(GIFT_COST) as totalValue
         FROM MY_FLOW.PUBLIC.GIFT_DETAILS
         WHERE BATCH_ID = ?
       `

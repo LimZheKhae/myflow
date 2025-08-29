@@ -551,4 +551,148 @@ export class EmailTemplates {
       html: this.baseTemplate(content)
     }
   }
+
+  static giftDelivered(giftData: any): EmailTemplate {
+    const content = `
+      <h2 style="color: #059669; margin-top: 0;">📦 Gift Delivered Successfully</h2>
+      
+      <div class="info-row">
+        <span class="info-label">Gift ID:</span>
+        <span class="info-value">#${giftData.giftId}</span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Player:</span>
+        <span class="info-value">${giftData.fullName} (${giftData.memberLogin})</span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Gift Item:</span>
+        <span class="info-value">${giftData.giftItem}</span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Value:</span>
+        <span class="info-value">${giftData.costMyr} MYR</span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Category:</span>
+        <span class="info-value">${giftData.category}</span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Tracking Code:</span>
+        <span class="info-value">${giftData.trackingCode || 'N/A'}</span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Dispatcher:</span>
+        <span class="info-value">${giftData.dispatcher || 'N/A'}</span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Updated by:</span>
+        <span class="info-value">${giftData.updatedBy || 'System'}</span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Delivery Date:</span>
+        <span class="info-value">${new Date().toLocaleDateString()}</span>
+      </div>
+      
+      <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;">
+      
+      <p><strong>Status:</strong> <span class="status-badge status-delivered">Delivered</span></p>
+      
+      <div class="alert-box alert-success">
+        <strong>Delivery Confirmed:</strong> This gift has been successfully delivered to the player. 
+        The tracking status has been updated to "Delivered" in the system.
+      </div>
+      
+      <p style="margin-top: 20px;">The gift delivery has been confirmed. Please ensure all delivery documentation is properly filed.</p>
+      
+      <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/gift-approval" class="action-button">
+        View Gift Approval System
+      </a>
+    `
+
+    return {
+      to: '',
+      subject: `Gift Delivered: #${giftData.giftId} - ${giftData.fullName}`,
+      text: `Gift #${giftData.giftId} has been delivered. Player: ${giftData.fullName} (${giftData.memberLogin}). Gift: ${giftData.giftItem}. Tracking: ${giftData.trackingCode || 'N/A'}`,
+      html: this.baseTemplate(content)
+    }
+  }
+
+  static bulkGiftDelivered(giftDataArray: any[]): EmailTemplate {
+    const giftDetails = giftDataArray.map(gift => `
+      <div style="border: 1px solid #e5e7eb; border-radius: 6px; padding: 15px; margin: 10px 0; background: #f9fafb;">
+        <div class="info-row">
+          <span class="info-label">Gift ID:</span>
+          <span class="info-value">#${gift.giftId}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Player:</span>
+          <span class="info-value">${gift.fullName} (${gift.memberLogin})</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Gift Item:</span>
+          <span class="info-value">${gift.giftItem}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Tracking Code:</span>
+          <span class="info-value">${gift.trackingCode || 'N/A'}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Dispatcher:</span>
+          <span class="info-value">${gift.dispatcher || 'N/A'}</span>
+        </div>
+      </div>
+    `).join('')
+
+    const content = `
+      <h2 style="color: #059669; margin-top: 0;">📦 Multiple Gifts Delivered</h2>
+      
+      <div class="info-row">
+        <span class="info-label">Total Delivered:</span>
+        <span class="info-value">${giftDataArray.length} gift(s)</span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Updated by:</span>
+        <span class="info-value">${giftDataArray[0]?.updatedBy || 'System'}</span>
+      </div>
+      
+      <div class="info-row">
+        <span class="info-label">Delivery Date:</span>
+        <span class="info-value">${new Date().toLocaleDateString()}</span>
+      </div>
+      
+      <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;">
+      
+      <p><strong>Status:</strong> <span class="status-badge status-delivered">Delivered</span></p>
+      
+      <div class="alert-box alert-success">
+        <strong>Bulk Delivery Confirmed:</strong> ${giftDataArray.length} gift(s) have been successfully delivered to their respective players. 
+        All tracking statuses have been updated to "Delivered" in the system.
+      </div>
+      
+      <h3 style="color: #374151; margin-top: 20px;">Delivered Gift Details:</h3>
+      ${giftDetails}
+      
+      <p style="margin-top: 20px;">All gift deliveries have been confirmed. Please ensure all delivery documentation is properly filed.</p>
+      
+      <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/gift-approval" class="action-button">
+        View Gift Approval System
+      </a>
+    `
+
+    return {
+      to: '',
+      subject: `Bulk Gift Delivery - ${giftDataArray.length} gift(s) delivered`,
+      html: this.baseTemplate(content),
+      text: `Bulk delivery: ${giftDataArray.length} gift(s) delivered. Updated by: ${giftDataArray[0]?.updatedBy || 'System'}. Gift IDs: ${giftDataArray.map(g => g.giftId).join(', ')}`
+    }
+  }
 }

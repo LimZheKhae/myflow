@@ -74,17 +74,17 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
   const getTemplateConfig = () => {
     const configs: Record<string, any> = {
       processing: {
-        template: 'giftId,giftItem,costMyr,memberLogin,dispatcher,trackingCode,status,uploadedBo',
+        template: 'giftId,giftItem,giftCost,memberLogin,dispatcher,trackingCode,status,uploadedBo',
         requiredFields: ['giftId', 'dispatcher', 'trackingCode'],
-        readOnlyFields: ['giftId', 'giftItem', 'costMyr', 'memberLogin'],
+        readOnlyFields: ['giftId', 'giftItem', 'giftCost', 'memberLogin'],
         autoFillFields: ['dispatcher', 'trackingCode', 'status', 'uploadedBo'],
         statusOptions: ['Pending', 'In Transit', 'Delivered', 'Failed'],
         booleanFields: ['uploadedBo'],
       },
       'kam-proof': {
-        template: 'giftId,giftItem,costMyr,memberLogin,receiverFeedback',
+        template: 'giftId,giftItem,giftCost,memberLogin,receiverFeedback',
         requiredFields: ['giftId'],
-        readOnlyFields: ['giftId', 'giftItem', 'costMyr', 'memberLogin'],
+        readOnlyFields: ['giftId', 'giftItem', 'giftCost', 'memberLogin'],
         autoFillFields: ['receiverFeedback'],
         canAdvanceWorkflow: true,
       },
@@ -365,7 +365,7 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
         if (tab === 'processing') {
           row.giftId = gift.GIFT_ID
           row.giftItem = gift.GIFT_ITEM
-          row.costMyr = gift.COST_BASE
+          row.giftCost = gift.GIFT_COST
           row.memberLogin = gift.MEMBER_LOGIN
           row.dispatcher = gift.DISPATCHER || ''
           row.trackingCode = gift.TRACKING_CODE || ''
@@ -374,7 +374,7 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
         } else if (tab === 'kam-proof') {
           row.giftId = gift.GIFT_ID
           row.giftItem = gift.GIFT_ITEM
-          row.costMyr = gift.COST_BASE
+          row.giftCost = gift.GIFT_COST
           row.memberLogin = gift.MEMBER_LOGIN
           row.receiverFeedback = gift.GIFT_FEEDBACK || ''
         } else if (tab === 'audit') {

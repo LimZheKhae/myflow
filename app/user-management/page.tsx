@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Search, Plus, Edit, Trash2 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { MERCHANTS, CURRENCIES } from '@/lib/constants'
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -67,12 +68,6 @@ const MODULES = [
 
 // Available permissions for each module
 const PERMISSIONS: Permission[] = ['VIEW', 'SEARCH', 'EDIT', 'ADD', 'DELETE', 'IMPORT', 'EXPORT']
-
-// Available merchants
-const MERCHANTS = ['MERCHANT_A', 'MERCHANT_B', 'MERCHANT_C', 'Beta', 'Seed', 'Maple', 'Alpha', 'Tesla', 'Other1']
-
-// Available currencies
-const CURRENCIES = ['USD', 'EUR', 'GBP', 'MYR', 'SGD', 'IDR', 'THB', 'PHP', 'INT', 'Tesla', 'Other1', 'Other2']
 
 // Available departments
 const DEPARTMENTS = ['KAM', 'MktOps', 'SalesOps', 'Audit', 'DSA']

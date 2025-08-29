@@ -143,10 +143,10 @@ export async function PUT(request: NextRequest) {
       userPermissions: userPermissions ? Object.keys(userPermissions) : 'none',
       giftApprovalPermissions: userPermissions?.['gift-approval']
     })
-    
+
     const validationResult = validateTabPermissions(tab, action, userRole, userPermissions)
     console.log('🔍 [PERMISSION VALIDATION] Validation result:', validationResult)
-    
+
     if (!validationResult.isValid) {
       console.log('❌ [PERMISSION VALIDATION] Validation failed:', validationResult.message)
       return NextResponse.json(
@@ -157,7 +157,7 @@ export async function PUT(request: NextRequest) {
         { status: 403 }
       )
     }
-    
+
     console.log('✅ [PERMISSION VALIDATION] Validation passed')
 
     // Get current gift status to validate workflow progression
@@ -198,6 +198,20 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Additional validation for reject action in processing tab
+    if (tab === 'processing' && action === 'reject') {
+      const rejectionValidation = await validateProcessingRejection(giftId)
+      if (!rejectionValidation.isValid) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: rejectionValidation.message,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // Perform the update based on tab and action
     const updateResult = await performUpdate(tab, action, {
       giftId,
@@ -212,6 +226,7 @@ export async function PUT(request: NextRequest) {
       mktProof: data?.mktProof || mktProof,
       giftFeedback: data?.giftFeedback || giftFeedback,
       auditRemark,
+      currentGift, // Pass current gift information for delivery notification logic
     })
 
     console.log('🔍 [SINGLE UPDATE] Update Result:', {
@@ -358,7 +373,7 @@ function validateTabPermissions(tab: string, action: string, userRole?: string, 
         allowedActions: ['approve', 'reject'],
         actionIncluded: ['approve', 'reject'].includes(action)
       })
-      
+
       // Pending tab: Only Manager and Admin can approve/reject
       if (!['MANAGER', 'ADMIN'].includes(userRole)) {
         console.log('❌ [PERMISSION VALIDATION] User role not allowed for pending tab')
@@ -436,12 +451,15 @@ function validateTabPermissions(tab: string, action: string, userRole?: string, 
 }
 
 // Get current gift status
-async function getCurrentGiftStatus(giftId: number): Promise<{ workflowStatus: string } | null> {
+async function getCurrentGiftStatus(giftId: number): Promise<{ workflowStatus: string; trackingStatus?: string } | null> {
   try {
-    const result = await executeQuery('SELECT WORKFLOW_STATUS FROM MY_FLOW.PUBLIC.GIFT_DETAILS WHERE GIFT_ID = ?', [giftId])
+    const result = await executeQuery('SELECT WORKFLOW_STATUS, TRACKING_STATUS FROM MY_FLOW.PUBLIC.GIFT_DETAILS WHERE GIFT_ID = ?', [giftId])
 
     if (Array.isArray(result) && result.length > 0) {
-      return { workflowStatus: result[0].WORKFLOW_STATUS }
+      return {
+        workflowStatus: result[0].WORKFLOW_STATUS,
+        trackingStatus: result[0].TRACKING_STATUS
+      }
     }
     return null
   } catch (error) {
@@ -550,6 +568,44 @@ async function validateProcessingRequirements(giftId: number): Promise<{ isValid
   }
 }
 
+// Validate processing rejection requirements
+async function validateProcessingRejection(giftId: number): Promise<{ isValid: boolean; message: string }> {
+  try {
+    const result = await executeQuery(
+      `SELECT TRACKING_STATUS 
+       FROM MY_FLOW.PUBLIC.GIFT_DETAILS 
+       WHERE GIFT_ID = ?`,
+      [giftId]
+    )
+
+    if (!Array.isArray(result) || result.length === 0) {
+      return {
+        isValid: false,
+        message: 'Gift not found',
+      }
+    }
+
+    const gift = result[0]
+    const trackingStatus = gift.TRACKING_STATUS
+
+    // Check if tracking status is set to any delivery-related status
+    if (trackingStatus && ['Pending', 'In Transit', 'Delivered'].includes(trackingStatus)) {
+      return {
+        isValid: false,
+        message: `Cannot reject gift with tracking status "${trackingStatus}". Gift is already in the delivery process.`,
+      }
+    }
+
+    return { isValid: true, message: 'Processing rejection validation passed' }
+  } catch (error) {
+    console.error('Error validating processing rejection:', error)
+    return {
+      isValid: false,
+      message: 'Error validating processing rejection',
+    }
+  }
+}
+
 // Perform the actual update
 async function performUpdate(
   tab: string,
@@ -568,6 +624,7 @@ async function performUpdate(
     giftFeedback?: string
     auditRemark?: string
     checkerName?: string
+    currentGift?: { workflowStatus: string; trackingStatus?: string }
   }
 ): Promise<{ success: boolean; message: string; newStatus?: string }> {
   try {
@@ -832,7 +889,7 @@ async function performUpdate(
         console.log("🔍 [GIFT REJECTION] Gift data result:", giftDataResult)
         if (Array.isArray(giftDataResult) && giftDataResult.length > 0) {
           const giftData = giftDataResult[0]
-          
+
           // Get the user's name who performed the rejection
           let rejectedByName = data.userId // Default to userId if we can't get the name
           try {
@@ -849,7 +906,7 @@ async function performUpdate(
           } catch (userError) {
             console.log('⚠️ Could not fetch user name, using userId:', data.userId)
           }
-          
+
           // Map the view fields to the expected format for the notification service
           const mappedGiftData = {
             giftId: giftData.GIFT_ID,
@@ -863,7 +920,7 @@ async function performUpdate(
             approvalReviewedBy: rejectedByName, // Use the actual name of who rejected it
             rejectReason: data.rejectReason
           }
-          
+
           console.log('🔍 [GIFT REJECTION] Gift data for notification:', {
             giftId: mappedGiftData.giftId,
             kamEmail: mappedGiftData.kamEmail,
@@ -871,7 +928,7 @@ async function performUpdate(
             rejectReason: mappedGiftData.rejectReason,
             rejectedBy: data.userId
           })
-          
+
           console.log('🔍 [GIFT REJECTION] Sending Integrated Notification:', {
             giftId: data.giftId,
             targetUserIds: [], // Empty array means use role-based targeting
@@ -879,20 +936,115 @@ async function performUpdate(
             rejectReason: mappedGiftData.rejectReason,
             rejectedBy: data.userId
           })
-          
+
           // Send integrated notification (both notification and email)
           // Pass empty array to use role-based targeting (KAM and ADMIN users)
           await IntegratedNotificationService.sendGiftRejectionNotification(
             mappedGiftData,
             [] // Empty array will trigger role-based targeting
           )
-          
+
           console.log('✅ [GIFT REJECTION] Integrated notification sent successfully')
         }
       } catch (notificationError) {
         console.error('❌ [GIFT REJECTION] Error sending integrated notification:', notificationError)
         // Don't fail the request if notification/email sending fails
       }
+    }
+
+    // Send integrated notification and email for delivery status updates
+    // Only send if tracking status changes TO 'Delivered' from a different status
+    if (data.trackingStatus === 'Delivered' && data.currentGift?.trackingStatus !== 'Delivered') {
+      console.log("🔍 [GIFT DELIVERY] Delivery status change detected (from non-delivered to delivered)")
+      console.log("🔍 [GIFT DELIVERY] Previous tracking status:", data.currentGift?.trackingStatus)
+      try {
+        // Get gift data for delivery notification using the view table
+        const giftDataQuery = `
+          SELECT 
+            GIFT_ID,
+            FULL_NAME,
+            MEMBER_LOGIN,
+            GIFT_ITEM,
+            COST_BASE,
+            CATEGORY,
+            KAM_NAME,
+            KAM_EMAIL,
+            MANAGER_NAME,
+            DISPATCHER,
+            TRACKING_CODE,
+            TRACKING_STATUS,
+            CREATED_DATE,
+            LAST_MODIFIED_DATE
+          FROM MY_FLOW.PRESENTATION.VIEW_GIFT_DETAILS 
+          WHERE GIFT_ID = ?
+        `
+        const giftDataResult = await executeQuery(giftDataQuery, [data.giftId])
+        console.log("🔍 [GIFT DELIVERY] Gift data result:", giftDataResult)
+        if (Array.isArray(giftDataResult) && giftDataResult.length > 0) {
+          const giftData = giftDataResult[0]
+
+          // Get the user's name who performed the delivery update
+          let updatedByName = data.userId // Default to userId if we can't get the name
+          try {
+            const userQuery = `
+              SELECT NAME, ROLE 
+              FROM MY_FLOW.GLOBAL_CONFIG.SYS_USER_INFO 
+              WHERE USER_ID = ?
+            `
+            const userResult = await executeQuery(userQuery, [data.userId])
+            if (Array.isArray(userResult) && userResult.length > 0) {
+              const user = userResult[0]
+              updatedByName = user.NAME || data.userId
+            }
+          } catch (userError) {
+            console.log('⚠️ Could not fetch user name, using userId:', data.userId)
+          }
+
+          // Map the view fields to the expected format for the notification service
+          const mappedGiftData = {
+            giftId: giftData.GIFT_ID,
+            fullName: giftData.FULL_NAME,
+            memberLogin: giftData.MEMBER_LOGIN,
+            giftItem: giftData.GIFT_ITEM,
+            costMyr: giftData.COST_BASE,
+            category: giftData.CATEGORY,
+            kamRequestedBy: giftData.KAM_NAME,
+            kamEmail: giftData.KAM_EMAIL,
+            dispatcher: giftData.DISPATCHER,
+            trackingCode: giftData.TRACKING_CODE,
+            trackingStatus: giftData.TRACKING_STATUS,
+            updatedBy: updatedByName
+          }
+
+          console.log('🔍 [GIFT DELIVERY] Gift data for notification:', {
+            giftId: mappedGiftData.giftId,
+            fullName: mappedGiftData.fullName,
+            trackingCode: mappedGiftData.trackingCode,
+            dispatcher: mappedGiftData.dispatcher,
+            updatedBy: data.userId
+          })
+
+          console.log('🔍 [GIFT DELIVERY] Sending Integrated Notification:', {
+            giftId: data.giftId,
+            targetRoles: ['MKTOPS', 'ADMIN'],
+            updatedBy: data.userId
+          })
+
+          // Send integrated notification (both notification and email) to MKTOPS and ADMIN
+          await IntegratedNotificationService.sendGiftDeliveryNotification(
+            mappedGiftData,
+            data.userId,
+            ['MKTOPS', 'ADMIN']
+          )
+
+          console.log('✅ [GIFT DELIVERY] Integrated notification sent successfully')
+        }
+      } catch (notificationError) {
+        console.error('❌ [GIFT DELIVERY] Error sending integrated notification:', notificationError)
+        // Don't fail the request if notification/email sending fails
+      }
+    } else if (data.trackingStatus === 'Delivered' && data.currentGift?.trackingStatus === 'Delivered') {
+      console.log("🔍 [GIFT DELIVERY] Delivery status unchanged (already delivered) - skipping notification")
     }
 
     return {

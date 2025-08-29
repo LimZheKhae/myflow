@@ -56,6 +56,9 @@ export async function PUT(request: NextRequest) {
       'bulk_mark_completed',
       'bulk_mark_as_issue',
 
+      // Processing tab actions
+      'bulk_update_delivery_status',
+
       // Legacy actions (for backward compatibility)
       'approve',
       'reject',
@@ -92,6 +95,8 @@ export async function PUT(request: NextRequest) {
 
       bulk_mark_as_issue: () => (!checkerName ? NextResponse.json({ success: false, message: 'Checker name is required for marking as issue' }, { status: 400 }) : null),
 
+      bulk_update_delivery_status: () => (!trackingStatus ? NextResponse.json({ success: false, message: 'trackingStatus is required for bulk_update_delivery_status action' }, { status: 400 }) : null),
+
       // Legacy validations
       approve: () => (!targetStatus ? NextResponse.json({ success: false, message: 'targetStatus is required for approve action' }, { status: 400 }) : null),
 
@@ -107,13 +112,14 @@ export async function PUT(request: NextRequest) {
 
     // Get current gift statuses before update for timeline logging
     const currentGiftsSQL = `
-      SELECT GIFT_ID, WORKFLOW_STATUS
+      SELECT GIFT_ID, WORKFLOW_STATUS, TRACKING_STATUS
       FROM MY_FLOW.PUBLIC.GIFT_DETAILS
       WHERE GIFT_ID IN (${giftIds.map(() => '?').join(',')})
     `
 
     const currentGiftsResult = (await executeQuery(currentGiftsSQL, giftIds)) as any[]
     const currentGiftsMap = new Map(currentGiftsResult.map((g) => [g.GIFT_ID, g.WORKFLOW_STATUS]))
+    const currentTrackingStatusMap = new Map(currentGiftsResult.map((g) => [g.GIFT_ID, g.TRACKING_STATUS]))
 
     // Build update fields based on action
     let updateFields: string[] = []
@@ -161,6 +167,34 @@ export async function PUT(request: NextRequest) {
 
       // PROCESSING TAB ACTIONS
       case 'bulk_reject_from_processing':
+        // Validate that gifts don't have delivery-related tracking status
+        const rejectionValidationSQL = `
+          SELECT GIFT_ID, TRACKING_STATUS
+          FROM MY_FLOW.PUBLIC.GIFT_DETAILS
+          WHERE GIFT_ID IN (${giftIds.map(() => '?').join(',')})
+        `
+        const rejectionValidationResult = (await executeQuery(rejectionValidationSQL, giftIds)) as any[]
+
+        const giftsWithDeliveryStatus = rejectionValidationResult.filter((gift) =>
+          gift.TRACKING_STATUS && ['Pending', 'In Transit', 'Delivered'].includes(gift.TRACKING_STATUS)
+        )
+
+        if (giftsWithDeliveryStatus.length > 0) {
+          const invalidDetails = giftsWithDeliveryStatus.map((gift) => ({
+            giftId: gift.GIFT_ID,
+            issues: [`Cannot reject gift with tracking status "${gift.TRACKING_STATUS}". Gift is already in the delivery process.`],
+          }))
+
+          return NextResponse.json(
+            {
+              success: false,
+              message: `${giftsWithDeliveryStatus.length} gift(s) cannot be rejected due to delivery status`,
+              invalidGifts: invalidDetails,
+            },
+            { status: 400 }
+          )
+        }
+
         updateFields.push('WORKFLOW_STATUS = ?', 'PURCHASED_BY = ?', 'REJECT_REASON = ?')
         updateParams.push('Rejected', userId, reason)
         giftIds.forEach((giftId) => {
@@ -216,7 +250,7 @@ export async function PUT(request: NextRequest) {
         `
         const validationResult = (await executeQuery(validationSQL, giftIds)) as any[]
 
-        const invalidGifts = validationResult.filter((gift) => !gift.DISPATCHER || !gift.TRACKING_CODE || gift.TRACKING_STATUS !== 'Delivered' || gift.UPLOADED_BO !== true)
+        const invalidGifts = validationResult.filter((gift) => !gift.DISPATCHER || !gift.TRACKING_CODE || gift.TRACKING_STATUS !== 'Delivered')
         console.log('🔍 [BULK PROCEED TO KAM PROOF] Invalid Gifts:', {
           invalidGifts,
           invalidGiftsCount: invalidGifts.length,
@@ -226,7 +260,7 @@ export async function PUT(request: NextRequest) {
         if (invalidGifts.length > 0) {
           const invalidDetails = invalidGifts.map((gift) => ({
             giftId: gift.GIFT_ID,
-            issues: [!gift.DISPATCHER ? 'Missing DISPATCHER' : null, !gift.TRACKING_CODE ? 'Missing TRACKING_CODE' : null, gift.TRACKING_STATUS !== 'Delivered' ? `TRACKING_STATUS must be 'Delivered' (current: ${gift.TRACKING_STATUS})` : null, gift.UPLOADED_BO !== true ? 'UPLOADED_BO must be TRUE' : null].filter(Boolean),
+            issues: [!gift.DISPATCHER ? 'Missing DISPATCHER' : null, !gift.TRACKING_CODE ? 'Missing TRACKING_CODE' : null, gift.TRACKING_STATUS !== 'Delivered' ? `TRACKING_STATUS must be 'Delivered' (current: ${gift.TRACKING_STATUS})` : null].filter(Boolean),
           }))
 
           return NextResponse.json(
@@ -253,6 +287,34 @@ export async function PUT(request: NextRequest) {
         break
 
       case 'bulk_reject_with_reason_from_processing':
+        // Validate that gifts don't have delivery-related tracking status
+        const rejectionValidationSQL2 = `
+          SELECT GIFT_ID, TRACKING_STATUS
+          FROM MY_FLOW.PUBLIC.GIFT_DETAILS
+          WHERE GIFT_ID IN (${giftIds.map(() => '?').join(',')})
+        `
+        const rejectionValidationResult2 = (await executeQuery(rejectionValidationSQL2, giftIds)) as any[]
+
+        const giftsWithDeliveryStatus2 = rejectionValidationResult2.filter((gift) =>
+          gift.TRACKING_STATUS && ['Pending', 'In Transit', 'Delivered'].includes(gift.TRACKING_STATUS)
+        )
+
+        if (giftsWithDeliveryStatus2.length > 0) {
+          const invalidDetails = giftsWithDeliveryStatus2.map((gift) => ({
+            giftId: gift.GIFT_ID,
+            issues: [`Cannot reject gift with tracking status "${gift.TRACKING_STATUS}". Gift is already in the delivery process.`],
+          }))
+
+          return NextResponse.json(
+            {
+              success: false,
+              message: `${giftsWithDeliveryStatus2.length} gift(s) cannot be rejected due to delivery status`,
+              invalidGifts: invalidDetails,
+            },
+            { status: 400 }
+          )
+        }
+
         updateFields.push('WORKFLOW_STATUS = ?', 'PURCHASED_BY = ?', 'REJECT_REASON = ?')
         updateParams.push('Rejected', userId, reason)
         giftIds.forEach((giftId) => {
@@ -369,6 +431,154 @@ export async function PUT(request: NextRequest) {
             remark: `Bulk marked as issue by ${checkerName}${auditRemark ? ': ' + auditRemark : ''}`,
           })
         })
+        break
+
+      case 'bulk_update_delivery_status':
+        // Validate that all selected gifts have dispatcher and tracking code
+        const deliveryValidationSQL = `
+          SELECT GIFT_ID, DISPATCHER, TRACKING_CODE
+          FROM MY_FLOW.PUBLIC.GIFT_DETAILS
+          WHERE GIFT_ID IN (${giftIds.map(() => '?').join(',')})
+        `
+        const deliveryValidationResult = (await executeQuery(deliveryValidationSQL, giftIds)) as any[]
+
+        const giftsWithoutTrackingInfo = deliveryValidationResult.filter((gift) =>
+          !gift.DISPATCHER || !gift.TRACKING_CODE || gift.DISPATCHER.trim() === '' || gift.TRACKING_CODE.trim() === ''
+        )
+
+        if (giftsWithoutTrackingInfo.length > 0) {
+          const invalidDetails = giftsWithoutTrackingInfo.map((gift) => ({
+            giftId: gift.GIFT_ID,
+            issues: [
+              !gift.DISPATCHER || gift.DISPATCHER.trim() === '' ? 'Missing DISPATCHER' : null,
+              !gift.TRACKING_CODE || gift.TRACKING_CODE.trim() === '' ? 'Missing TRACKING_CODE' : null
+            ].filter(Boolean),
+          }))
+
+          return NextResponse.json(
+            {
+              success: false,
+              message: `${giftsWithoutTrackingInfo.length} gift(s) cannot be updated due to missing dispatcher or tracking code`,
+              invalidGifts: invalidDetails,
+            },
+            { status: 400 }
+          )
+        }
+
+        updateFields.push('TRACKING_STATUS = ?', 'PURCHASED_BY = ?')
+        updateParams.push(trackingStatus, userId)
+        giftIds.forEach((giftId) => {
+          timelineEntries.push({
+            giftId,
+            fromStatus: currentGiftsMap.get(giftId) || null,
+            toStatus: currentGiftsMap.get(giftId) || 'MKTOps_Processing',
+            changedBy: userId,
+            remark: `Bulk delivery status updated to: ${trackingStatus}`,
+          })
+        })
+
+        // Create notification and send emails for delivery status updates
+        // Only send if tracking status changes TO 'Delivered' from a different status
+        if (trackingStatus === 'Delivered') {
+          // Check if any gifts are changing from non-delivered to delivered status
+          const giftsChangingToDelivered = giftIds.filter(giftId => {
+            const previousTrackingStatus = currentTrackingStatusMap.get(giftId)
+            return previousTrackingStatus !== 'Delivered'
+          })
+
+          if (giftsChangingToDelivered.length > 0) {
+            console.log('🚀 [BULK DELIVERY STATUS UPDATE] Processing bulk delivery notification for gifts changing to delivered')
+            console.log('🚀 [BULK DELIVERY STATUS UPDATE] Gifts changing to delivered:', giftsChangingToDelivered)
+            console.log('🚀 [BULK DELIVERY STATUS UPDATE] Previous tracking statuses:', Object.fromEntries(
+              giftsChangingToDelivered.map(giftId => [giftId, currentTrackingStatusMap.get(giftId)])
+            ))
+
+            try {
+              // Get gift data for delivery notification using the view table
+              // Only fetch data for gifts that are changing to delivered status
+              const deliveryGiftIds = giftsChangingToDelivered
+              const deliveryPlaceholders = deliveryGiftIds.map(() => '?').join(',')
+
+              const giftDataQuery = `
+                SELECT 
+                  GIFT_ID,
+                  FULL_NAME,
+                  MEMBER_LOGIN,
+                  GIFT_ITEM,
+                  GIFT_COST,
+                  CATEGORY,
+                  KAM_NAME,
+                  KAM_EMAIL,
+                  MANAGER_NAME,
+                  DISPATCHER,
+                  TRACKING_CODE,
+                  TRACKING_STATUS,
+                  CREATED_DATE,
+                  LAST_MODIFIED_DATE
+                FROM MY_FLOW.PRESENTATION.VIEW_GIFT_DETAILS 
+                WHERE GIFT_ID IN (${deliveryPlaceholders})
+              `
+              const giftDataResult = await executeQuery(giftDataQuery, deliveryGiftIds)
+
+              if (Array.isArray(giftDataResult) && giftDataResult.length > 0) {
+                // Get the user's name who performed the delivery update
+                let updatedByName = uploadedBy // Default to uploadedBy if we can't get the name
+                try {
+                  const userQuery = `
+                    SELECT NAME, ROLE 
+                    FROM MY_FLOW.GLOBAL_CONFIG.SYS_USER_INFO 
+                    WHERE USER_ID = ?
+                  `
+                  const userResult = await executeQuery(userQuery, [uploadedBy])
+                  if (Array.isArray(userResult) && userResult.length > 0) {
+                    const user = userResult[0]
+                    updatedByName = user.NAME || uploadedBy
+                  }
+                } catch (userError) {
+                  console.log('⚠️ Could not fetch user name, using uploadedBy:', uploadedBy)
+                }
+
+                // Map the view fields to the expected format for the notification service
+                const giftDataArray = giftDataResult.map(gift => ({
+                  giftId: gift.GIFT_ID,
+                  fullName: gift.FULL_NAME,
+                  memberLogin: gift.MEMBER_LOGIN,
+                  giftItem: gift.GIFT_ITEM,
+                  giftCost: gift.GIFT_COST,
+                  category: gift.CATEGORY,
+                  kamRequestedBy: gift.KAM_NAME,
+                  kamEmail: gift.KAM_EMAIL,
+                  dispatcher: gift.DISPATCHER,
+                  trackingCode: gift.TRACKING_CODE,
+                  trackingStatus: gift.TRACKING_STATUS,
+                  updatedBy: updatedByName,
+                  createdDate: gift.CREATED_DATE,
+                  lastModifiedDate: gift.LAST_MODIFIED_DATE
+                }))
+
+                console.log('🚀 [BULK DELIVERY STATUS UPDATE] Sending bulk delivery notification:', {
+                  giftCount: giftDataArray.length,
+                  totalGifts: giftIds.length,
+                  giftsChangingToDelivered: deliveryGiftIds.length,
+                  updatedBy: updatedByName
+                })
+
+                await IntegratedNotificationService.sendBulkGiftDeliveryNotification(
+                  giftDataArray,
+                  uploadedBy,
+                  ['MKTOPS', 'ADMIN']
+                )
+
+                console.log('✅ [BULK DELIVERY STATUS UPDATE] Bulk delivery notification sent successfully')
+              }
+            } catch (notificationError) {
+              console.error('❌ [BULK DELIVERY STATUS UPDATE] Error sending bulk delivery notification:', notificationError)
+              // Don't fail the request if notification/email sending fails
+            }
+          } else {
+            console.log('🚀 [BULK DELIVERY STATUS UPDATE] All gifts already delivered - skipping notification')
+          }
+        }
         break
 
       // LEGACY ACTIONS (for backward compatibility)
@@ -601,7 +811,7 @@ export async function PUT(request: NextRequest) {
       if (action.includes('reject')) {
         try {
           console.log('🚀 [BULK REJECTION] Processing bulk rejection notification')
-          
+
           // Get gift data for emails using the view table
           const giftDataQuery = `
             SELECT 
@@ -609,7 +819,7 @@ export async function PUT(request: NextRequest) {
               FULL_NAME,
               MEMBER_LOGIN,
               GIFT_ITEM,
-              COST_BASE,
+              GIFT_COST,
               CATEGORY,
               KAM_NAME,
               KAM_EMAIL,
@@ -621,12 +831,12 @@ export async function PUT(request: NextRequest) {
             WHERE GIFT_ID IN (${placeholders})
           `
           const giftDataResult = await executeQuery(giftDataQuery, giftIds)
-          
+
           if (Array.isArray(giftDataResult) && giftDataResult.length > 0) {
             // Get the user's name who performed the rejection
             let rejectedByName = uploadedBy // Default to uploadedBy if we can't get the name
             try {
-                          const userQuery = `
+              const userQuery = `
               SELECT NAME, ROLE 
               FROM MY_FLOW.GLOBAL_CONFIG.SYS_USER_INFO 
               WHERE USER_ID = ?
@@ -645,20 +855,20 @@ export async function PUT(request: NextRequest) {
               fullName: gift.FULL_NAME,
               memberLogin: gift.MEMBER_LOGIN,
               giftItem: gift.GIFT_ITEM,
-              costMyr: gift.COST_BASE,
+              giftCost: gift.GIFT_COST,
               category: gift.CATEGORY,
               kamRequestedBy: gift.KAM_NAME,
               kamEmail: gift.KAM_EMAIL,
               approvalReviewedBy: rejectedByName, // Use the actual name of who rejected it
               rejectReason: reason // Set the rejection reason
             }))
-            
+
             console.log('🚀 [BULK REJECTION] Sending dedicated bulk rejection notification:', {
               giftCount: giftDataArray.length,
               rejectedBy: rejectedByName,
               rejectReason: reason
             })
-            
+
             // Send dedicated bulk rejection notification (both email and in-app)
             await IntegratedNotificationService.sendBulkGiftRejectionNotification(
               giftDataArray,
@@ -666,11 +876,114 @@ export async function PUT(request: NextRequest) {
               reason, // rejection reason
               ['KAM', 'ADMIN'] // target roles
             )
-            
+
             console.log('✅ [BULK REJECTION] Bulk rejection notification sent successfully')
           }
         } catch (notificationError) {
           console.error('❌ [BULK REJECTION] Error sending bulk rejection notification:', notificationError)
+          // Don't fail the request if notification/email sending fails
+        }
+      }
+
+      // Create notification and send emails for delivery status updates
+      // Only send if tracking status changes TO 'Delivered' from a different status
+      if (trackingStatus === 'Delivered') {
+        // Check if any gifts are changing from non-delivered to delivered status
+        const giftsChangingToDelivered = giftIds.filter(giftId => {
+          const previousTrackingStatus = currentTrackingStatusMap.get(giftId)
+          return previousTrackingStatus !== 'Delivered'
+        })
+
+        if (giftsChangingToDelivered.length > 0) {
+          console.log('🚀 [BULK DELIVERY] Processing bulk delivery notification for gifts changing to delivered')
+          console.log('🚀 [BULK DELIVERY] Gifts changing to delivered:', giftsChangingToDelivered)
+          console.log('🚀 [BULK DELIVERY] Previous tracking statuses:', Object.fromEntries(
+            giftsChangingToDelivered.map(giftId => [giftId, currentTrackingStatusMap.get(giftId)])
+          ))
+        } else {
+          console.log('🚀 [BULK DELIVERY] All gifts already delivered - skipping notification')
+        }
+
+        try {
+
+          // Get gift data for delivery notification using the view table
+          // Only fetch data for gifts that are changing to delivered status
+          const deliveryGiftIds = giftsChangingToDelivered
+          const deliveryPlaceholders = deliveryGiftIds.map(() => '?').join(',')
+
+          const giftDataQuery = `
+            SELECT 
+              GIFT_ID,
+              FULL_NAME,
+              MEMBER_LOGIN,
+              GIFT_ITEM,
+              GIFT_COST,
+              CATEGORY,
+              KAM_NAME,
+              KAM_EMAIL,
+              MANAGER_NAME,
+              DISPATCHER,
+              TRACKING_CODE,
+              TRACKING_STATUS,
+              CREATED_DATE,
+              LAST_MODIFIED_DATE
+            FROM MY_FLOW.PRESENTATION.VIEW_GIFT_DETAILS 
+            WHERE GIFT_ID IN (${deliveryPlaceholders})
+          `
+          const giftDataResult = await executeQuery(giftDataQuery, deliveryGiftIds)
+
+          if (Array.isArray(giftDataResult) && giftDataResult.length > 0) {
+            // Get the user's name who performed the delivery update
+            let updatedByName = uploadedBy // Default to uploadedBy if we can't get the name
+            try {
+              const userQuery = `
+                SELECT NAME, ROLE 
+                FROM MY_FLOW.GLOBAL_CONFIG.SYS_USER_INFO 
+                WHERE USER_ID = ?
+              `
+              const userResult = await executeQuery(userQuery, [uploadedBy])
+              if (Array.isArray(userResult) && userResult.length > 0) {
+                const user = userResult[0]
+                updatedByName = user.NAME || uploadedBy
+              }
+            } catch (userError) {
+              console.log('⚠️ Could not fetch user name, using uploadedBy:', uploadedBy)
+            }
+
+            // Map the view fields to the expected format for the notification service
+            const giftDataArray = giftDataResult.map(gift => ({
+              giftId: gift.GIFT_ID,
+              fullName: gift.FULL_NAME,
+              memberLogin: gift.MEMBER_LOGIN,
+              giftItem: gift.GIFT_ITEM,
+              giftCost: gift.GIFT_COST,
+              category: gift.CATEGORY,
+              kamRequestedBy: gift.KAM_NAME,
+              kamEmail: gift.KAM_EMAIL,
+              dispatcher: gift.DISPATCHER,
+              trackingCode: gift.TRACKING_CODE,
+              trackingStatus: gift.TRACKING_STATUS,
+              updatedBy: updatedByName
+            }))
+
+            console.log('🚀 [BULK DELIVERY] Sending bulk delivery notification:', {
+              giftCount: giftDataArray.length,
+              totalGifts: giftIds.length,
+              giftsChangingToDelivered: deliveryGiftIds.length,
+              updatedBy: updatedByName
+            })
+
+            // Send integrated notification (both notification and email) to MKTOPS and ADMIN
+            await IntegratedNotificationService.sendBulkGiftDeliveryNotification(
+              giftDataArray,
+              uploadedBy,
+              ['MKTOPS', 'ADMIN']
+            )
+
+            console.log('✅ [BULK DELIVERY] Bulk delivery notification sent successfully')
+          }
+        } catch (notificationError) {
+          console.error('❌ [BULK DELIVERY] Error sending bulk delivery notification:', notificationError)
           // Don't fail the request if notification/email sending fails
         }
       }

@@ -32,6 +32,7 @@ import ImagePopup from '@/components/ui/image-popup'
 
 import type { GiftRequestDetails, GiftRequestDetailsView, GiftCategory, WorkflowStatus, TrackingStatus, GiftRequestForm } from '@/types/gift'
 import { REWARD_NAME_OPTIONS, CATEGORY_OPTIONS } from '@/types/gift'
+import { MERCHANTS, CURRENCIES } from '@/lib/constants'
 import { useMemberProfiles, useMemberValidation } from '@/contexts/member-profile-context'
 
 // Workflow Timeline Component
@@ -351,6 +352,8 @@ export default function Gifts() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all')
+  const [merchantFilter, setMerchantFilter] = useState<string>('all')
+  const [currencyFilter, setCurrencyFilter] = useState<string>('all')
   const [isAnimating, setIsAnimating] = useState(false)
   const [selectedGift, setSelectedGift] = useState<GiftRequestDetailsView | null>(null)
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
@@ -381,6 +384,7 @@ export default function Gifts() {
   // Modal form states
   const [rejectingGiftId, setRejectingGiftId] = useState<number | null>(null)
   const [rejectReason, setRejectReason] = useState('')
+  const [bulkDeliveryStatus, setBulkDeliveryStatus] = useState('')
   const [mkTOpsGiftId, setMKTOpsGiftId] = useState<number | null>(null)
   const [mkTOpsForm, setMKTOpsForm] = useState({
     dispatcher: '',
@@ -400,6 +404,7 @@ export default function Gifts() {
   const [auditCheckerName, setAuditCheckerName] = useState('')
 
   const [requestForm, setRequestForm] = useState<GiftRequestForm>({
+    merchant: '',
     memberName: '',
     memberLogin: '',
     memberId: undefined,
@@ -407,8 +412,8 @@ export default function Gifts() {
     rewardName: '',
     rewardClubOrder: '',
     value: '',
-    valueLocal: '',
-    remark: '',
+    currency: '',
+    description: '',
     category: '',
   })
 
@@ -421,6 +426,49 @@ export default function Gifts() {
   // Member profile hooks for validation
   const { memberProfiles, isLoading: memberProfilesLoading, lastUpdated, refreshCache } = useMemberProfiles()
   const { validateMember, getMemberDetails } = useMemberValidation()
+
+  // Debug member profiles loading
+  useEffect(() => {
+    console.log('📊 Member Profiles Debug:')
+    console.log('  - memberProfilesLoading:', memberProfilesLoading)
+    console.log('  - memberProfiles.length:', memberProfiles.length)
+    console.log('  - memberProfiles (first 5):', memberProfiles.slice(0, 5))
+    if (memberProfiles.length > 0) {
+      console.log('  - All unique merchantNames:', [...new Set(memberProfiles.map(m => m.merchantName))])
+      console.log('  - Sample member structure:', memberProfiles[0])
+    }
+  }, [memberProfiles, memberProfilesLoading])
+
+  // Get filtered members based on selected merchant
+  const getFilteredMembers = () => {
+    if (!requestForm.merchant) return []
+
+    console.log('🔍 getFilteredMembers Debug:')
+    console.log('  - requestForm.merchant:', requestForm.merchant)
+    console.log('  - memberProfiles.length:', memberProfiles.length)
+    console.log('  - memberProfiles (first 5):', memberProfiles.slice(0, 5))
+    console.log('  - All unique merchantNames in memberProfiles:', [...new Set(memberProfiles.map(m => m.merchantName))])
+
+    const filtered = memberProfiles.filter((member) => member.merchantName === requestForm.merchant)
+    console.log('  - Filtered members count:', filtered.length)
+    console.log('  - Filtered members:', filtered)
+
+    return filtered
+  }
+
+  // Enhanced validation that considers merchant
+  const validateMemberForMerchant = (memberLogin: string) => {
+    if (!requestForm.merchant || !memberLogin) return false
+    const merchantMembers = getFilteredMembers()
+    return merchantMembers.some((member) => member.memberLogin.toLowerCase() === memberLogin.toLowerCase())
+  }
+
+  // Enhanced member details that considers merchant
+  const getMemberDetailsForMerchant = (memberLogin: string) => {
+    if (!requestForm.merchant || !memberLogin) return null
+    const merchantMembers = getFilteredMembers()
+    return merchantMembers.find((member) => member.memberLogin.toLowerCase() === memberLogin.toLowerCase()) || null
+  }
 
   // Permission checks
   const canViewGifts = hasPermission('gift-approval', 'VIEW')
@@ -516,6 +564,8 @@ export default function Gifts() {
     setActiveTab(value)
     setRowSelection({})
     setDeliveryStatusFilter('all') // Reset delivery status filter when switching tabs
+    setMerchantFilter('all') // Reset merchant filter when switching tabs
+    setCurrencyFilter('all') // Reset currency filter when switching tabs
     // Reset to first page when changing tabs
     setPagination((prev) => ({ ...prev, page: 1 }))
   }
@@ -630,38 +680,51 @@ export default function Gifts() {
     setRequestForm((prev) => {
       const newForm = { ...prev, [field]: value }
 
+      // If merchant is being changed, clear member-related fields and reset form
+      if (field === 'merchant') {
+        console.log('🔄 Merchant Changed Debug:')
+        console.log('  - New merchant value:', value)
+        console.log('  - memberProfiles.length:', memberProfiles.length)
+        console.log('  - memberProfiles (first 3):', memberProfiles.slice(0, 3))
+        console.log('  - All unique merchantNames in memberProfiles:', [...new Set(memberProfiles.map(m => m.merchantName))])
+
+        // Clear member-related fields when merchant changes
+        newForm.memberLogin = ''
+        newForm.memberName = ''
+        newForm.memberId = undefined
+        newForm.currency = ''
+        setShowMemberDropdown(false)
+      }
+
       // If memberLogin is being changed, validate and auto-populate memberName and memberId
       if (field === 'memberLogin') {
-        // Only try to validate if member profiles are loaded
-        if (!memberProfilesLoading && memberProfiles.length > 0) {
-          const selectedMember = memberProfiles.find((member) => member.memberLogin.toLowerCase() === value.toLowerCase())
+        // Only try to validate if member profiles are loaded and merchant is selected
+        if (!memberProfilesLoading && memberProfiles.length > 0 && newForm.merchant) {
+          // Filter members by selected merchant first
+          const merchantMembers = memberProfiles.filter((member) =>
+            member.merchantName === newForm.merchant
+          )
+
+          const selectedMember = merchantMembers.find((member) =>
+            member.memberLogin.toLowerCase() === value.toLowerCase()
+          )
+
           if (selectedMember) {
             newForm.memberName = selectedMember.memberName || ''
             newForm.memberId = selectedMember.memberId
-
-            // Handle currency logic for valueLocal
-            if (selectedMember.currency === 'MYR') {
-              // For MYR players, valueLocal should match value (MYR)
-              newForm.valueLocal = prev.value || ''
-            } else {
-              // For non-MYR players, keep existing valueLocal or clear it
-              // Don't auto-fill as they may need to enter exchange rate
-            }
+            // Auto-set currency from member profile
+            newForm.currency = selectedMember.currency || 'MYR'
           } else {
             // Clear memberName and memberId if member login is invalid or not exact match
             newForm.memberName = ''
             newForm.memberId = undefined
-            newForm.valueLocal = '' // Clear local value too
+            newForm.currency = ''
           }
-        }
-        // If profiles are still loading, don't modify other fields
-      }
-
-      // If value (MYR) is being changed and member is MYR, update valueLocal automatically
-      if (field === 'value' && !memberProfilesLoading && prev.memberLogin && validateMember(prev.memberLogin)) {
-        const memberDetails = getMemberDetails(prev.memberLogin)
-        if (memberDetails?.currency === 'MYR') {
-          newForm.valueLocal = value // Auto-sync for MYR players
+        } else if (!newForm.merchant) {
+          // Clear member fields if no merchant is selected
+          newForm.memberName = ''
+          newForm.memberId = undefined
+          newForm.currency = ''
         }
       }
 
@@ -677,14 +740,20 @@ export default function Gifts() {
     }
 
     // Validate all required fields
-    if (!requestForm.memberLogin || !requestForm.giftItem || !requestForm.rewardName || !requestForm.value || !requestForm.category) {
+    if (!requestForm.merchant || !requestForm.memberLogin || !requestForm.giftItem || !requestForm.rewardName || !requestForm.value || !requestForm.category) {
       toast.error('Please fill in all required fields')
       return
     }
 
-    // Validate member login exists
-    if (!validateMember(requestForm.memberLogin)) {
-      toast.error('Please enter a valid member login')
+    // Validate member login exists for the selected merchant
+    if (!validateMemberForMerchant(requestForm.memberLogin)) {
+      toast.error('Please enter a valid member login for the selected merchant')
+      return
+    }
+
+    // Validate currency is auto-detected
+    if (!requestForm.currency) {
+      toast.error('Please select a valid member to auto-detect currency')
       return
     }
 
@@ -697,15 +766,12 @@ export default function Gifts() {
 
     setIsSubmittingRequest(true)
     try {
-      // Get the validated member details
-      const validatedMember = getMemberDetails(requestForm.memberLogin)
+      // Get the validated member details for the selected merchant
+      const validatedMember = getMemberDetailsForMerchant(requestForm.memberLogin)
       if (!validatedMember) {
         toast.error('Member validation failed. Please try again.')
         return
       }
-
-      // Parse local value
-      const numericLocalValue = requestForm.valueLocal ? parseFloat(requestForm.valueLocal) : null
 
       const response = await fetch('/api/gift-approval/create', {
         method: 'POST',
@@ -713,16 +779,16 @@ export default function Gifts() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          merchant: requestForm.merchant,
           memberName: validatedMember.memberName,
           memberLogin: validatedMember.memberLogin,
           memberId: validatedMember.memberId,
           giftItem: requestForm.giftItem,
           rewardName: requestForm.rewardName || null,
           rewardClubOrder: requestForm.rewardClubOrder || null,
-          costMyr: numericValue,
-          costLocal: numericLocalValue,
-          currency: validatedMember.currency || 'MYR',
-          remark: requestForm.remark,
+          giftCost: numericValue,
+          currency: requestForm.currency,
+          description: requestForm.description,
           category: requestForm.category,
           userId: user?.id!,
           userRole: user?.role!,
@@ -750,7 +816,7 @@ export default function Gifts() {
           giftItem: requestForm.giftItem,
           memberName: requestForm.memberName,
           memberLogin: requestForm.memberLogin,
-          costMyr: parseFloat(requestForm.value),
+          giftCost: parseFloat(requestForm.value),
           category: requestForm.category,
           remark: `Gift request created: ${requestForm.giftItem} for ${requestForm.memberName}`,
         })
@@ -758,6 +824,7 @@ export default function Gifts() {
 
       // Reset form
       setRequestForm({
+        merchant: '',
         memberName: '',
         memberLogin: '',
         memberId: undefined,
@@ -765,8 +832,8 @@ export default function Gifts() {
         rewardName: '',
         rewardClubOrder: '',
         value: '',
-        valueLocal: '',
-        remark: '',
+        currency: '',
+        description: '',
         category: '',
       })
       setShowMemberDropdown(false)
@@ -1257,6 +1324,57 @@ export default function Gifts() {
         toast.error("Some gifts are missing feedback. Please fill feedback first or use 'Fill Feedback and Proceed' action.")
       } else {
         toast.error('Failed to proceed gifts to audit')
+      }
+    } finally {
+      setIsBulkActioning(false)
+    }
+  }
+
+  const handleBulkUpdateDeliveryStatus = async (trackingStatus: string) => {
+    if (!canEditGifts) {
+      toast.error("You don't have permission to update delivery status")
+      return
+    }
+
+    const selectedRows = Object.keys(rowSelection)
+    if (selectedRows.length === 0) {
+      toast.error('Please select at least one gift to update')
+      return
+    }
+
+    const selectedGiftIds = getSelectedGiftIds()
+
+    setIsBulkActioning(true)
+    try {
+      const data = await performBulkAction(
+        'bulk_update_delivery_status',
+        selectedGiftIds,
+        {
+          trackingStatus,
+          tab: activeTab,
+        },
+        user?.id || 'unknown'
+      )
+
+      toast.success(`Successfully updated delivery status to "${trackingStatus}" for ${selectedGiftIds.length} gift(s)`)
+
+      // Log activity for bulk delivery status update
+      await logActivity('BULK_UPDATE_DELIVERY_STATUS', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
+        giftIds: selectedGiftIds,
+        count: selectedGiftIds.length,
+        trackingStatus,
+        tab: activeTab,
+        remark: `Bulk updated ${selectedGiftIds.length} gifts to "${trackingStatus}"`,
+      })
+
+      setRowSelection({})
+      await refreshGiftsData()
+    } catch (error: any) {
+      if (error.apiResponse?.invalidGifts) {
+        const invalidCount = error.apiResponse.invalidGifts.length
+        toast.error(`${invalidCount} gift(s) cannot be updated. Please ensure all selected gifts have dispatcher and tracking code set.`)
+      } else {
+        toast.error(error.message || 'Failed to update delivery status')
       }
     } finally {
       setIsBulkActioning(false)
@@ -1775,9 +1893,9 @@ export default function Gifts() {
         second: '2-digit',
         hour12: true
       }).replace(',', '') : '',
-      amount: gift.costMyr || gift.costVnd || 0,
+      amount: gift.giftCost || 0,
       name: gift.rewardName || '',
-      description: gift.remark || '',
+      description: gift.description || '',
       category: gift.category || '',
       categoryTitle: '', // Leave empty as requested
     }))
@@ -1824,6 +1942,16 @@ export default function Gifts() {
       }
     }
 
+    // Apply merchant filter
+    if (merchantFilter !== 'all') {
+      filtered = filtered.filter((gift) => gift.merchantName === merchantFilter)
+    }
+
+    // Apply currency filter
+    if (currencyFilter !== 'all') {
+      filtered = filtered.filter((gift) => gift.currency === currencyFilter)
+    }
+
     // Apply search filter if search term exists
     if (searchTerm) {
       filtered = filtered.filter((gift) =>
@@ -1833,6 +1961,19 @@ export default function Gifts() {
         gift.memberLogin?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         gift.kamRequestedBy?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         gift.kamEmail?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    }
+
+    // Apply UBAC filtering based on user's merchant and currency permissions
+    if (user?.merchants && user.merchants.length > 0) {
+      filtered = filtered.filter((gift) =>
+        !gift.merchantName || user.merchants.includes(gift.merchantName)
+      )
+    }
+
+    if (user?.currencies && user.currencies.length > 0) {
+      filtered = filtered.filter((gift) =>
+        !gift.currency || user.currencies.includes(gift.currency)
       )
     }
 
@@ -1920,6 +2061,15 @@ export default function Gifts() {
       cell: ({ row }) => <div className="font-mono text-sm">{row.getValue('giftId')}</div>,
     },
     {
+      accessorKey: 'merchantName',
+      header: 'Merchant',
+      cell: ({ row }) => (
+        <div className="font-medium text-sm">
+          {row.getValue('merchantName') || 'N/A'}
+        </div>
+      ),
+    },
+    {
       accessorKey: 'fullName',
       header: 'Player',
       cell: ({ row }) => (
@@ -1958,12 +2108,18 @@ export default function Gifts() {
       ),
     },
     {
-      accessorKey: 'costMyr',
-      header: 'Value (MYR)',
+      accessorKey: 'giftCost',
+      header: 'Gift Cost',
       cell: ({ row }) => {
-        const amount = Number.parseFloat(row.getValue('costMyr') || '0')
-        const formatted = formatMoney(amount, { currency: 'MYR' })
-        return <div className="font-medium">{formatted}</div>
+        const amount = Number.parseFloat(row.getValue('giftCost') || '0')
+        const currency = row.original.currency || 'MYR'
+        const formatted = formatMoney(amount, { currency })
+        return (
+          <div className="font-medium">
+            <div>{formatted}</div>
+            <div className="text-xs text-gray-500">{currency}</div>
+          </div>
+        )
       },
     },
     {
@@ -1976,19 +2132,13 @@ export default function Gifts() {
         return (
           <div className="flex items-center gap-2">
             {getWorkflowStatusBadge(status)}
-            {status === 'Rejected' && gift.rejectReason && (
-              <div className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200">
-                <XCircle className="h-3 w-3" />
-                <span>Has Reason</span>
-              </div>
-            )}
             {(status === 'KAM_Request' || status === 'Manager_Review' || status === 'MKTOps_Processing' || status === 'KAM_Proof') && gift.auditRemark && (
               <div className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-full border border-orange-200">
                 <XCircle className="h-3 w-3" />
-                <span>Has Issue</span>
+                <span>Issue</span>
               </div>
             )}
-            {status === 'MKTOps_Processing' && gift.uploadedBo && (
+            {status === 'Completed' && gift.uploadedBo && (
               <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-200">
                 <CheckSquare className="h-3 w-3" />
                 <span>BO Uploaded</span>
@@ -2067,7 +2217,7 @@ export default function Gifts() {
               <IconComponent className="h-3 w-3" />
               <span>{config.label}</span>
             </div>
-            {trackingStatus === 'Delivered' && activeTab === 'processing' && gift.uploadedBo && (
+            {trackingStatus === 'Delivered' && activeTab === 'processing' && (
               <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-200">
                 <CheckCircle className="h-3 w-3" />
                 <span>Ready for KAM</span>
@@ -2130,6 +2280,10 @@ export default function Gifts() {
                       <CardContent>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
+                            <p className="text-sm font-medium text-slate-600">Merchant</p>
+                            <p className="text-base">{gift.merchantName || 'N/A'}</p>
+                          </div>
+                          <div>
                             <p className="text-sm font-medium text-slate-600">Player</p>
                             <p className="text-base">
                               {gift.fullName || 'N/A'} ({gift.memberLogin || 'N/A'})
@@ -2148,8 +2302,8 @@ export default function Gifts() {
                             <p className="text-base font-mono text-sm">{gift.rewardClubOrder || '-'}</p>
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-slate-600">Value (MYR)</p>
-                            <p className="text-base">{formatMoney(gift.costMyr || 0, { currency: 'MYR' })}</p>
+                            <p className="text-sm font-medium text-slate-600">Gift Cost</p>
+                            <p className="text-base">{formatMoney(gift.giftCost || 0, { currency: gift.currency || 'MYR' })}</p>
                           </div>
                           <div>
                             <p className="text-sm font-medium text-slate-600">Category</p>
@@ -2398,12 +2552,17 @@ export default function Gifts() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 w-8 p-0 cursor-pointer text-red-600 hover:text-red-700"
+                    className={`h-8 w-8 p-0 ${gift.trackingStatus && ['Pending', 'In Transit', 'Delivered'].includes(gift.trackingStatus) ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer text-red-600 hover:text-red-700'}`}
                     onClick={() => {
-                      setRejectingGiftId(gift.giftId)
-                      setIsRejectModalOpen(true)
+                      if (!gift.trackingStatus || !['Pending', 'In Transit', 'Delivered'].includes(gift.trackingStatus)) {
+                        setRejectingGiftId(gift.giftId)
+                        setIsRejectModalOpen(true)
+                      }
                     }}
-                    title="Reject from Processing (e.g., item sold out)"
+                    disabled={Boolean(gift.trackingStatus && ['Pending', 'In Transit', 'Delivered'].includes(gift.trackingStatus))}
+                    title={gift.trackingStatus && ['Pending', 'In Transit', 'Delivered'].includes(gift.trackingStatus)
+                      ? `Cannot reject gift with tracking status "${gift.trackingStatus}". Gift is already in the delivery process.`
+                      : "Reject from Processing (e.g., item sold out)"}
                   >
                     <XCircle className="h-4 w-4" />
                   </Button>
@@ -2561,7 +2720,7 @@ export default function Gifts() {
           if (g.workflowStatus === 'Rejected') {
             return sum
           }
-          return sum + (g.costMyr || 0)
+          return sum + (g.giftCost || 0)
         }, 0),
         { currency: 'MYR' }
       ),
@@ -2663,6 +2822,24 @@ export default function Gifts() {
 
                     <div className="space-y-6">
                       <div className="space-y-2">
+                        <Label htmlFor="merchant" className="text-sm font-medium">
+                          Merchant <span className="text-red-500">*</span>
+                        </Label>
+                        <Select value={requestForm.merchant} onValueChange={(value) => handleFormChange('merchant', value)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select merchant" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {MERCHANTS.map((merchant) => (
+                              <SelectItem key={merchant} value={merchant}>
+                                {merchant}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
                         <Label htmlFor="memberLogin" className="text-sm font-medium">
                           Member Login <span className="text-red-500">*</span>
                         </Label>
@@ -2670,32 +2847,33 @@ export default function Gifts() {
                           <Input
                             ref={memberLoginInputRef}
                             id="memberLogin"
-                            placeholder="Enter member login to search..."
+                            placeholder={requestForm.merchant ? "Enter member login to search..." : "Please select a merchant first"}
                             value={requestForm.memberLogin}
                             onChange={(e) => {
                               handleFormChange('memberLogin', e.target.value)
                               setShowMemberDropdown(true)
                             }}
-                            onFocus={() => setShowMemberDropdown(true)}
+                            onFocus={() => requestForm.merchant && setShowMemberDropdown(true)}
                             onBlur={() => {
                               // Delay hiding dropdown to allow for clicks
                               setTimeout(() => setShowMemberDropdown(false), 200)
                             }}
-                            className={`pr-10 ${requestForm.memberLogin && !validateMember(requestForm.memberLogin) ? 'border-red-500 focus:border-red-500' : ''}`}
+                            className={`pr-10 ${!requestForm.merchant ? 'bg-gray-50 cursor-not-allowed' : ''} ${requestForm.memberLogin && !validateMemberForMerchant(requestForm.memberLogin) ? 'border-red-500 focus:border-red-500' : ''}`}
+                            disabled={!requestForm.merchant}
                             required
                           />
-                          {requestForm.memberLogin && <div className="absolute right-3 top-1/2 transform -translate-y-1/2">{validateMember(requestForm.memberLogin) ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}</div>}
+                          {requestForm.memberLogin && requestForm.merchant && <div className="absolute right-3 top-1/2 transform -translate-y-1/2">{validateMemberForMerchant(requestForm.memberLogin) ? <CheckCircle className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-red-500" />}</div>}
 
-                          {/* Dropdown suggestions */}
-                          {showMemberDropdown && requestForm.memberLogin && requestForm.memberLogin.length >= 2 && (
+                          {/* Dropdown suggestions - only show if merchant is selected */}
+                          {showMemberDropdown && requestForm.merchant && requestForm.memberLogin && requestForm.memberLogin.length >= 2 && (
                             <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
                               {memberProfilesLoading ? (
                                 <div className="px-3 py-2 text-sm text-gray-500 flex items-center">
                                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                                   Loading member profiles...
                                 </div>
-                              ) : memberProfiles.length > 0 ? (
-                                memberProfiles
+                              ) : getFilteredMembers().length > 0 ? (
+                                getFilteredMembers()
                                   .filter((member) => member.memberLogin.toLowerCase().includes(requestForm.memberLogin.toLowerCase()) || member.memberName.toLowerCase().includes(requestForm.memberLogin.toLowerCase()))
                                   .slice(0, 10) // Limit to 10 suggestions
                                   .map((member) => (
@@ -2722,13 +2900,16 @@ export default function Gifts() {
                                     </div>
                                   ))
                               ) : (
-                                <div className="px-3 py-2 text-sm text-gray-500">No member profiles loaded yet</div>
+                                <div className="px-3 py-2 text-sm text-gray-500">No members found for selected merchant</div>
                               )}
-                              {memberProfiles.length > 0 && memberProfiles.filter((member) => member.memberLogin.toLowerCase().includes(requestForm.memberLogin.toLowerCase()) || member.memberName.toLowerCase().includes(requestForm.memberLogin.toLowerCase())).length === 0 && <div className="px-3 py-2 text-sm text-gray-500">No members found matching "{requestForm.memberLogin}"</div>}
+                              {getFilteredMembers().length > 0 && getFilteredMembers().filter((member) => member.memberLogin.toLowerCase().includes(requestForm.memberLogin.toLowerCase()) || member.memberName.toLowerCase().includes(requestForm.memberLogin.toLowerCase())).length === 0 && <div className="px-3 py-2 text-sm text-gray-500">No members found matching "{requestForm.memberLogin}" for {requestForm.merchant}</div>}
                             </div>
                           )}
                         </div>
-                        {memberProfilesLoading && <p className="text-xs text-blue-500">Loading member profiles...</p>}
+                        {!requestForm.merchant && (
+                          <p className="text-xs text-amber-600">⚠️ Please select a merchant first to search for members</p>
+                        )}
+                        {memberProfilesLoading && requestForm.merchant && <p className="text-xs text-blue-500">Loading member profiles...</p>}
                         {!memberProfilesLoading && memberProfiles.length === 0 && (
                           <p className="text-xs text-red-500">
                             No member profiles loaded.
@@ -2737,23 +2918,31 @@ export default function Gifts() {
                             </button>
                           </p>
                         )}
-                        {!memberProfilesLoading && memberProfiles.length > 0 && (
+                        {!memberProfilesLoading && memberProfiles.length > 0 && requestForm.merchant && (
                           <p className="text-xs text-green-600">
-                            ✅ {memberProfiles.length} members loaded • Last updated: {lastUpdated ? lastUpdated.toLocaleTimeString() : 'Unknown'}
+                            ✅ {getFilteredMembers().length} members available for {requestForm.merchant} • Last updated: {lastUpdated ? lastUpdated.toLocaleTimeString() : 'Unknown'}
                             <button onClick={() => refreshCache()} className="ml-2 text-blue-500 hover:text-blue-700 underline" title="Refresh member cache">
                               Refresh
                             </button>
                           </p>
                         )}
-                        {!memberProfilesLoading && requestForm.memberLogin && !validateMember(requestForm.memberLogin) && <p className="text-xs text-red-500">Member login not found. Please enter a valid member login.</p>}
-                        {!memberProfilesLoading && requestForm.memberLogin && validateMember(requestForm.memberLogin) && <p className="text-xs text-green-500">✓ Valid member: {getMemberDetails(requestForm.memberLogin)?.memberName}</p>}
+                        {!memberProfilesLoading && requestForm.memberLogin && requestForm.merchant && !validateMemberForMerchant(requestForm.memberLogin) && <p className="text-xs text-red-500">Member login not found for {requestForm.merchant}. Please enter a valid member login.</p>}
+                        {!memberProfilesLoading && requestForm.memberLogin && requestForm.merchant && validateMemberForMerchant(requestForm.memberLogin) && <p className="text-xs text-green-500">✓ Valid member: {getMemberDetailsForMerchant(requestForm.memberLogin)?.memberName}</p>}
                       </div>
 
                       <div className="space-y-2">
                         <Label htmlFor="giftItem" className="text-sm font-medium">
                           Gift Item <span className="text-red-500">*</span>
                         </Label>
-                        <Input id="giftItem" placeholder="Enter gift item description" value={requestForm.giftItem} onChange={(e) => handleFormChange('giftItem', e.target.value)} required />
+                        <Input
+                          id="giftItem"
+                          placeholder={requestForm.merchant ? "Enter gift item description" : "Please select a merchant first"}
+                          value={requestForm.giftItem}
+                          onChange={(e) => handleFormChange('giftItem', e.target.value)}
+                          disabled={!requestForm.merchant}
+                          className={!requestForm.merchant ? 'bg-gray-50 cursor-not-allowed' : ''}
+                          required
+                        />
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
@@ -2761,9 +2950,9 @@ export default function Gifts() {
                           <Label htmlFor="rewardName" className="text-sm font-medium">
                             Reward Name <span className="text-red-500">*</span>
                           </Label>
-                          <Select value={requestForm.rewardName} onValueChange={(value) => handleFormChange('rewardName', value)}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select reward name" />
+                          <Select value={requestForm.rewardName} onValueChange={(value) => handleFormChange('rewardName', value)} disabled={!requestForm.merchant}>
+                            <SelectTrigger className={!requestForm.merchant ? 'bg-gray-50 cursor-not-allowed' : ''}>
+                              <SelectValue placeholder={requestForm.merchant ? "Select reward name" : "Please select a merchant first"} />
                             </SelectTrigger>
                             <SelectContent>
                               {REWARD_NAME_OPTIONS.map((option) => (
@@ -2779,66 +2968,94 @@ export default function Gifts() {
                           <Label htmlFor="rewardClubOrder" className="text-sm font-medium">
                             Reward Club Order
                           </Label>
-                          <Input id="rewardClubOrder" placeholder="Enter reward club order (optional)" value={requestForm.rewardClubOrder} onChange={(e) => handleFormChange('rewardClubOrder', e.target.value)} />
+                          <Input
+                            id="rewardClubOrder"
+                            placeholder={requestForm.merchant ? "Enter reward club order (optional)" : "Please select a merchant first"}
+                            value={requestForm.rewardClubOrder}
+                            onChange={(e) => handleFormChange('rewardClubOrder', e.target.value)}
+                            disabled={!requestForm.merchant}
+                            className={!requestForm.merchant ? 'bg-gray-50 cursor-not-allowed' : ''}
+                          />
                         </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="value" className="text-sm font-medium">
-                            Value (MYR) <span className="text-red-500">*</span>
+                            Gift Cost <span className="text-red-500">*</span>
                           </Label>
-                          <Input id="value" type="number" step="0.01" placeholder="Enter MYR amount" value={requestForm.value} onChange={(e) => handleFormChange('value', e.target.value)} required />
-                          <p className="text-xs text-gray-500">Always enter the MYR equivalent amount</p>
+                          <div className="relative">
+                            <Input
+                              id="value"
+                              type="number"
+                              step="0.01"
+                              placeholder={requestForm.merchant ? "Enter gift cost" : "Please select a merchant first"}
+                              value={requestForm.value}
+                              onChange={(e) => handleFormChange('value', e.target.value)}
+                              disabled={!requestForm.merchant}
+                              className={`${!requestForm.merchant ? 'bg-gray-50 cursor-not-allowed' : ''} pr-16`}
+                              required
+                            />
+                            <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                              <span className={`text-sm font-medium ${requestForm.currency
+                                ? 'text-gray-600'
+                                : 'text-gray-400'
+                                }`}>
+                                {requestForm.currency || ''}
+                              </span>
+                            </div>
+                          </div>
+
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="valueLocal" className="text-sm font-medium">
-                            Value (Local Currency)
+                          <Label htmlFor="category" className="text-sm font-medium">
+                            Category <span className="text-red-500">*</span>
                           </Label>
-                          <div className="relative">
-                            <Input id="valueLocal" type="number" step="0.01" placeholder={!memberProfilesLoading && requestForm.memberLogin && validateMember(requestForm.memberLogin) ? `Enter ${getMemberDetails(requestForm.memberLogin)?.currency || 'Local'} amount` : 'Enter local currency amount'} value={requestForm.valueLocal || ''} onChange={(e) => handleFormChange('valueLocal', e.target.value)} disabled={Boolean(!memberProfilesLoading && requestForm.memberLogin && validateMember(requestForm.memberLogin) && getMemberDetails(requestForm.memberLogin)?.currency === 'MYR')} />
-                            {!memberProfilesLoading && requestForm.memberLogin && validateMember(requestForm.memberLogin) && <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">{getMemberDetails(requestForm.memberLogin)?.currency || 'N/A'}</div>}
-                          </div>
-                          <p className="text-xs text-gray-500">{!memberProfilesLoading && requestForm.memberLogin && validateMember(requestForm.memberLogin) && getMemberDetails(requestForm.memberLogin)?.currency === 'MYR' ? 'Auto-filled for MYR players (same as MYR value)' : "Optional: Enter amount in member's local currency if different from MYR"}</p>
+                          <Select value={requestForm.category} onValueChange={(value) => handleFormChange('category', value)} disabled={!requestForm.merchant}>
+                            <SelectTrigger className={!requestForm.merchant ? 'bg-gray-50 cursor-not-allowed' : ''}>
+                              <SelectValue placeholder={requestForm.merchant ? "Select category" : "Please select a merchant first"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CATEGORY_OPTIONS.map((option) => (
+                                <SelectItem key={option} value={option}>
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="category" className="text-sm font-medium">
-                          Category <span className="text-red-500">*</span>
-                        </Label>
-                        <Select value={requestForm.category} onValueChange={(value) => handleFormChange('category', value)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {CATEGORY_OPTIONS.map((option) => (
-                              <SelectItem key={option} value={option}>
-                                {option}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+
 
                       <div className="space-y-2">
-                        <Label htmlFor="remark" className="text-sm font-medium">
+                        <Label htmlFor="description" className="text-sm font-medium">
                           Description
                         </Label>
-                        <Textarea id="remark" placeholder="Enter detailed remarks about this gift request (optional)" value={requestForm.remark} onChange={(e) => handleFormChange('remark', e.target.value)} rows={4} />
+                        <Textarea
+                          id="description"
+                          placeholder={requestForm.merchant ? "Enter detailed description about this gift request (optional)" : "Please select a merchant first"}
+                          value={requestForm.description}
+                          onChange={(e) => handleFormChange('description', e.target.value)}
+                          disabled={!requestForm.merchant}
+                          className={!requestForm.merchant ? 'bg-gray-50 cursor-not-allowed' : ''}
+                          rows={4}
+                        />
                       </div>
 
                       <div className="flex justify-end space-x-3 pt-4">
                         <Button variant="outline" onClick={() => setIsRequestModalOpen(false)}>
                           Cancel
                         </Button>
-                        <Button onClick={handleSubmitRequest} className="bg-green-600 hover:bg-green-700" disabled={isSubmittingRequest}>
+                        <Button onClick={handleSubmitRequest} className="bg-green-600 hover:bg-green-700" disabled={isSubmittingRequest || !requestForm.merchant}>
                           {isSubmittingRequest ? (
                             <>
                               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                               Submitting...
                             </>
+                          ) : !requestForm.merchant ? (
+                            'Select Merchant First'
                           ) : (
                             'Submit Request'
                           )}
@@ -2942,21 +3159,81 @@ export default function Gifts() {
               <CardDescription>Complete workflow for managing gift requests, approvals, and delivery tracking</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Search Bar */}
-              <div className="flex items-center gap-2 mb-4">
-                <div className="relative flex-1">
-                  {isSearching ? (
-                    <Loader2 className="absolute left-3 top-3 h-4 w-4 text-slate-400 animate-spin" />
-                  ) : (
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                  )}
-                  <Input
-                    placeholder="Search by player name, member login, gift item, KAM name/email, or gift ID..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
+              {/* Search Bar and Filters */}
+              <div className="space-y-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    {isSearching ? (
+                      <Loader2 className="absolute left-3 top-3 h-4 w-4 text-slate-400 animate-spin" />
+                    ) : (
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                    )}
+                    <Input
+                      placeholder="Search by player name, member login, gift item, KAM name/email, or gift ID..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
                 </div>
+
+                {/* Filters Row */}
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="merchantFilter" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                      Merchant:
+                    </Label>
+                    <Select value={merchantFilter} onValueChange={setMerchantFilter}>
+                      <SelectTrigger className="w-32 h-8 text-sm">
+                        <SelectValue placeholder="All" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        {MERCHANTS.filter(merchant => !user?.merchants || user.merchants.length === 0 || user.merchants.includes(merchant)).map((merchant) => (
+                          <SelectItem key={merchant} value={merchant}>
+                            {merchant}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="currencyFilter" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                      Currency:
+                    </Label>
+                    <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
+                      <SelectTrigger className="w-24 h-8 text-sm">
+                        <SelectValue placeholder="All" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        {CURRENCIES.filter(currency => !user?.currencies || user.currencies.length === 0 || user.currencies.includes(currency)).map((currency) => (
+                          <SelectItem key={currency} value={currency}>
+                            {currency}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {(merchantFilter !== 'all' || currencyFilter !== 'all') && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setMerchantFilter('all')
+                        setCurrencyFilter('all')
+                      }}
+                      className="text-gray-500 hover:text-gray-700"
+                    >
+                      Clear Filters
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 mb-4">
 
                 {/* Bulk Upload Button */}
                 {/* Bulk Upload Button - Only show for "Pending" tab for creating new gifts */}
@@ -3254,6 +3531,88 @@ export default function Gifts() {
                               {isBulkActioning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ArrowRight className="h-4 w-4 mr-2" />}
                               Proceed to KAM Proof ({Object.keys(rowSelection).length})
                             </Button>
+                          </RoleBasedActionPermission>
+
+                          <RoleBasedActionPermission
+                            allowedRoles={['MKTOPS', 'MANAGER', 'ADMIN']}
+                            permission="EDIT"
+                            module="gift-approval"
+                            alwaysShow={true}
+                            disabledFallback={
+                              <Button size="sm" variant="outline" disabled className="bg-gray-400 text-white opacity-50 cursor-not-allowed" title="MKTOps/Manager role and EDIT permission required">
+                                <Truck className="h-4 w-4 mr-2" />
+                                Update Delivery Status ({Object.keys(rowSelection).length})
+                              </Button>
+                            }
+                          >
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline" className="bg-indigo-600 text-white hover:bg-indigo-700" disabled={isBulkActioning} title="Update delivery status for selected gifts">
+                                  <Truck className="h-4 w-4 mr-2" />
+                                  Update Delivery Status ({Object.keys(rowSelection).length})
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle className="flex items-center gap-2">
+                                    <Truck className="h-5 w-5 text-indigo-600" />
+                                    Bulk Update Delivery Status
+                                  </DialogTitle>
+                                  <DialogDescription>
+                                    Update the delivery status for {Object.keys(rowSelection).length} selected gift(s).
+                                    <br />
+                                    <span className="text-sm text-amber-600 mt-1 block">
+                                      ⚠️ Note: All selected gifts must have dispatcher and tracking code set before updating delivery status.
+                                    </span>
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div>
+                                    <Label htmlFor="bulkDeliveryStatus">
+                                      Delivery Status <span className="text-red-500">*</span>
+                                    </Label>
+                                    <Select value={bulkDeliveryStatus} onValueChange={setBulkDeliveryStatus}>
+                                      <SelectTrigger className="w-full">
+                                        <SelectValue placeholder="Select delivery status" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="Pending">Pending</SelectItem>
+                                        <SelectItem value="In Transit">In Transit</SelectItem>
+                                        <SelectItem value="Delivered">Delivered</SelectItem>
+                                        <SelectItem value="Failed">Failed</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="flex justify-end space-x-2">
+                                    <DialogTrigger asChild>
+                                      <Button variant="outline">Cancel</Button>
+                                    </DialogTrigger>
+                                    <Button
+                                      onClick={() => {
+                                        if (bulkDeliveryStatus) {
+                                          handleBulkUpdateDeliveryStatus(bulkDeliveryStatus)
+                                          setBulkDeliveryStatus('')
+                                        }
+                                      }}
+                                      disabled={!bulkDeliveryStatus || isBulkActioning}
+                                      className="bg-indigo-600 hover:bg-indigo-700"
+                                    >
+                                      {isBulkActioning ? (
+                                        <>
+                                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                          Updating...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Truck className="h-4 w-4 mr-2" />
+                                          Update Status
+                                        </>
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
                           </RoleBasedActionPermission>
                         </>
                       )}
@@ -3882,7 +4241,7 @@ export default function Gifts() {
                   <span className="text-gray-600">Gift:</span> {selectedGift?.giftItem}
                 </div>
                 <div>
-                  <span className="text-gray-600">Value:</span> {selectedGift?.costMyr ? formatMoney(selectedGift.costMyr, { currency: selectedGift.currency || 'MYR' }) : 'N/A'}
+                  <span className="text-gray-600">Gift Cost:</span> {selectedGift?.giftCost ? formatMoney(selectedGift.giftCost, { currency: selectedGift.currency || 'MYR' }) : 'N/A'}
                 </div>
                 <div>
                   <span className="text-gray-600">Category:</span> {selectedGift?.category}

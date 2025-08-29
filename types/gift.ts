@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 // Zod schema for gift request form validation
 export const giftRequestFormSchema = z.object({
+  merchant: z.string().min(1, 'Merchant is required'),
   memberName: z.string().min(1, 'Member name is required'),
   memberLogin: z.string().min(1, 'Member login is required'),
   memberId: z.number().min(1, 'Member ID is required'),
@@ -13,13 +14,10 @@ export const giftRequestFormSchema = z.object({
   rewardClubOrder: z.string().optional(),
   value: z
     .string()
-    .min(1, 'Value (MYR) is required')
-    .refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, 'Value must be a positive number'),
-  valueLocal: z
-    .string()
-    .optional()
-    .refine((val) => !val || (!isNaN(parseFloat(val)) && parseFloat(val) > 0), 'Local value must be a positive number if provided'),
-  remark: z.string().optional(),
+    .min(1, 'Gift cost is required')
+    .refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, 'Gift cost must be a positive number'),
+  currency: z.string().min(1, 'Currency is required'),
+  description: z.string().optional(),
   category: z
     .string()
     .min(1, 'Category is required')
@@ -28,23 +26,23 @@ export const giftRequestFormSchema = z.object({
 
 export type GiftRequestFormSchema = z.infer<typeof giftRequestFormSchema>
 
-export type WorkflowStatus = 
-  | 'KAM_Request' 
-  | 'Manager_Review' 
-  | 'MKTOps_Processing' 
-  | 'KAM_Proof' 
-  | 'SalesOps_Audit' 
-  | 'Completed' 
+export type WorkflowStatus =
+  | 'KAM_Request'
+  | 'Manager_Review'
+  | 'MKTOps_Processing'
+  | 'KAM_Proof'
+  | 'SalesOps_Audit'
+  | 'Completed'
   | 'Rejected'
 
-export type TrackingStatus = 
-  | 'Pending' 
-  | 'In_Transit' 
-  | 'Delivered' 
-  | 'Failed' 
+export type TrackingStatus =
+  | 'Pending'
+  | 'In_Transit'
+  | 'Delivered'
+  | 'Failed'
   | 'Returned'
 
-export type GiftCategory = 
+export type GiftCategory =
   | 'Birthday Gift'
   | 'Offline Campaign'
   | 'Online Campaign'
@@ -58,6 +56,7 @@ export type GiftCategory =
 export interface GiftRequestDetailsTable {
   giftId: number
   memberId: string | null
+  merchantName: string | null
   kamRequestedBy: string | null // User ID
   createdDate: Date | null
   workflowStatus: WorkflowStatus | null
@@ -67,9 +66,9 @@ export interface GiftRequestDetailsTable {
   address: string | null
   rewardName: string | null
   giftItem: string | null
-  costMyr: number | null
-  costVnd: number | null
-  remark: string | null
+  giftCost: number | null
+  currency: string | null
+  description: string | null
   rewardClubOrder: string | null
   category: GiftCategory | null
   approvalReviewedBy: string | null // User ID
@@ -83,7 +82,7 @@ export interface GiftRequestDetailsTable {
   kamProof: string | null
   kamProofBy: string | null // User ID
   giftFeedback: string | null
-  
+
   // Audit Information (from base table)
   auditedBy: string | null // AUDITED_BY from base table (user ID)
   auditDate: Date | null
@@ -107,10 +106,9 @@ export interface GiftRequestDetailsView {
   address?: string | null
   rewardName?: string | null
   giftItem?: string | null
-  costMyr?: number | null
-  costVnd?: number | null
+  giftCost?: number | null
   currency?: string | null
-  remark?: string | null
+  description?: string | null
   rewardClubOrder?: string | null
   category?: GiftCategory | null
   approvalReviewedBy?: string | null // MANAGER_NAME from view (resolved name)
@@ -127,7 +125,7 @@ export interface GiftRequestDetailsView {
   kamProofBy?: string | null // KAM_PROOF_NAME from view (resolved name)
   kamProofEmail?: string | null
   giftFeedback?: string | null
-  
+
   // Audit Information (from view)
   auditorName: string | null // AUDITER_NAME from view (resolved name)
   auditorEmail?: string | null
@@ -139,7 +137,7 @@ export interface GiftRequestDetailsView {
 
 // Legacy type - keeping for backward compatibility
 // This maps to GiftRequestDetailsView for now
-export interface GiftRequestDetails extends GiftRequestDetailsView {}
+export interface GiftRequestDetails extends GiftRequestDetailsView { }
 
 // Enums for better type safety
 export enum WorkflowStatusEnum {
@@ -247,15 +245,16 @@ export interface AuditTabRow {
 
 // Form Types for UI
 export interface GiftRequestForm {
+  merchant: string // Required: Merchant selection
   memberName: string // Required: VIP Member Name
   memberLogin: string // Required: VIP Member Login
   memberId?: number // Optional: Member ID from member profile
   giftItem: string // Required: Gift item description
   rewardName?: string // Optional: Reward name
   rewardClubOrder?: string // Optional: Reward club order
-  value: string // Required: Gift value in MYR (will be stored as COST_BASE)
-  valueLocal?: string // Optional: Gift value in local currency (will be stored as COST_LOCAL)
-  remark?: string // Optional: Additional remarks
+  value: string // Required: Gift cost (will be stored as GIFT_COST)
+  currency: string // Required: Currency
+  description?: string // Optional: Additional description (was remark)
   category: GiftCategory | '' // Required: Gift category
 }
 

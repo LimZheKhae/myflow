@@ -14,18 +14,16 @@ export async function POST(request: NextRequest) {
       giftItem,
       rewardName,
       rewardClubOrder,
-      costMyr,
-      costLocal,
+      giftCost,
       currency,
-      remark,
+      description,
       category,
       userId,
       userRole,
       userPermissions,
     }: GiftRequestForm & {
       userId: string
-      costMyr: number
-      costLocal: number | null
+      giftCost: number
       currency: string
       memberId: number
       userRole?: string
@@ -33,7 +31,7 @@ export async function POST(request: NextRequest) {
     } = body
 
     // Validate required fields
-    if (!giftItem || !costMyr || !category || !userId || !memberName || !memberLogin || !memberId) {
+    if (!giftItem || !giftCost || !category || !userId || !memberName || !memberLogin || !memberId) {
       return NextResponse.json(
         {
           success: false,
@@ -94,7 +92,7 @@ export async function POST(request: NextRequest) {
     // Backend will accept any valid category from the GiftCategory type
 
     // Validate cost value
-    if (costMyr <= 0) {
+    if (giftCost <= 0) {
       return NextResponse.json(
         {
           success: false,
@@ -112,9 +110,9 @@ export async function POST(request: NextRequest) {
       INSERT INTO MY_FLOW.PUBLIC.GIFT_DETAILS (
         BATCH_ID, KAM_REQUESTED_BY, CREATED_DATE, WORKFLOW_STATUS,
         MEMBER_ID, MEMBER_LOGIN, REWARD_NAME, GIFT_ITEM,
-        COST_BASE, CURRENCY, COST_LOCAL, REMARK, REWARD_CLUB_ORDER, CATEGORY,
+        GIFT_COST, CURRENCY, DESCRIPTION, REWARD_CLUB_ORDER, CATEGORY,
         LAST_MODIFIED_DATE
-      ) VALUES (?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
+      ) VALUES (?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
     `
 
     const insertParams = [
@@ -125,10 +123,9 @@ export async function POST(request: NextRequest) {
       memberLogin, // MEMBER_LOGIN
       rewardName || null, // REWARD_NAME
       giftItem, // GIFT_ITEM
-      costMyr, // COST_BASE (always in MYR)
+      giftCost, // GIFT_COST
       currency || 'MYR', // CURRENCY (from member profile)
-      costLocal, // COST_LOCAL (local currency amount, can be null)
-      remark || null, // REMARK
+      description || null, // DESCRIPTION
       rewardClubOrder || null, // REWARD_CLUB_ORDER
       category, // CATEGORY
     ]
@@ -200,13 +197,13 @@ export async function POST(request: NextRequest) {
       WHERE KAM_REQUESTED_BY = ? 
         AND MEMBER_LOGIN = ?
         AND GIFT_ITEM = ?
-        AND COST_BASE = ?
+        AND GIFT_COST = ?
         AND DATE(CREATED_DATE) = CURRENT_DATE()
       ORDER BY CREATED_DATE DESC 
       LIMIT 1
     `
 
-    const giftIdResult = await executeQuery(getGiftIdSQL, [userId, memberLogin, giftItem, costMyr])
+    const giftIdResult = await executeQuery(getGiftIdSQL, [userId, memberLogin, giftItem, giftCost])
     const createdGiftId = Array.isArray(giftIdResult) && giftIdResult[0] ? giftIdResult[0].GIFT_ID : null
 
     // Log workflow timeline for gift creation

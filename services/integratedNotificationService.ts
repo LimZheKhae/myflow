@@ -133,7 +133,7 @@ export class IntegratedNotificationService {
         ...notification,
         createdAt: Timestamp.now(),
       })
-      
+
       console.log('🔔 [NOTIFICATION] Notification created successfully with ID:', docRef.id)
       return docRef.id
     } catch (error) {
@@ -174,7 +174,7 @@ export class IntegratedNotificationService {
     // Get target users for email
     const targetUsers = await this.getTargetUsers(data)
     console.log(`📧 Found ${targetUsers.length} target users for email:`, targetUsers.map((u: { id: string; email: string; name: string; role: string }) => ({ id: u.id, email: u.email, role: u.role })))
-    
+
     if (targetUsers.length === 0) {
       console.log('📧 No target users found for email')
       return
@@ -217,6 +217,17 @@ export class IntegratedNotificationService {
           console.log('📧 Using workflow_update template with data:', data.emailData)
           emailTemplate = EmailTemplates.workflowUpdate(data.emailData as any)
           break
+        case 'gift_delivered':
+          console.log('📧 Using gift_delivered template with data:', data.emailData)
+          emailTemplate = EmailTemplates.giftDelivered(data.emailData as any)
+          break
+        case 'bulk_gift_delivered':
+          console.log('📧 Using bulk_gift_delivered template with data:', {
+            giftCount: data.emailData.giftDataArray?.length || 0,
+            updatedBy: data.emailData.updatedBy
+          })
+          emailTemplate = EmailTemplates.bulkGiftDelivered(data.emailData.giftDataArray || [])
+          break
         default:
           console.error(`❌ Unknown email template: ${data.emailTemplate}`)
           throw new Error(`Unknown email template: ${data.emailTemplate}`)
@@ -229,7 +240,7 @@ export class IntegratedNotificationService {
 
     // Send email to all target users using bulk email method
     const recipientEmails = targetUsers.map((user: { id: string; email: string; name: string; role: string }) => user.email).filter((email: string) => email && email.trim() !== '')
-    
+
     console.log('📧 Email sending details:', {
       totalTargetUsers: targetUsers.length,
       validEmails: recipientEmails.length,
@@ -237,7 +248,7 @@ export class IntegratedNotificationService {
       emailTemplateSubject: emailTemplate.subject,
       emailTemplateTo: emailTemplate.to
     })
-    
+
     if (recipientEmails.length === 0) {
       console.log('📧 No valid email addresses found for recipients')
       console.log('📧 Target users:', targetUsers.map((u: { id: string; email: string; name: string; role: string }) => ({ id: u.id, email: u.email, name: u.name, role: u.role })))
@@ -245,18 +256,18 @@ export class IntegratedNotificationService {
     }
 
     console.log(`📧 Sending bulk email to ${recipientEmails.length} recipients:`, recipientEmails)
-    
+
     // Send email using Brevo service
     console.log('📧 Calling Brevo service with:', {
       to: recipientEmails,
       subject: emailTemplate.subject,
       htmlLength: emailTemplate.html?.length || 0
     })
-    
+
     const result = await this.brevoService.sendEmailToMultipleRecipients(emailTemplate, recipientEmails)
-    
+
     console.log('📧 Email send result:', result)
-    
+
     if (result.success) {
       console.log(`✅ Bulk email sent successfully to ${recipientEmails.length} users`)
     } else {
@@ -286,8 +297,8 @@ export class IntegratedNotificationService {
       // 5. If multiple are not null -> Send to all specified targets
 
       // Check if this is a global notification (all targeting fields are null/empty)
-      const isGlobalNotification = !data.userId && 
-        (!data.targetUserIds || data.targetUserIds.length === 0) && 
+      const isGlobalNotification = !data.userId &&
+        (!data.targetUserIds || data.targetUserIds.length === 0) &&
         (!data.roles || data.roles.length === 0)
 
       if (isGlobalNotification) {
@@ -340,12 +351,12 @@ export class IntegratedNotificationService {
         // Filter out empty or invalid user IDs
         const validUserIds = data.targetUserIds.filter(id => id && id.trim() !== '')
         console.log(`🔍 Looking for specific users: ${validUserIds.join(', ')}`)
-        
+
         if (validUserIds.length === 0) {
           console.log('⚠️ No valid user IDs provided for targeting')
           return users
         }
-        
+
         try {
           const userDocs = await Promise.all(
             validUserIds.map(id => usersRef.doc(id).get())
@@ -372,17 +383,17 @@ export class IntegratedNotificationService {
       // Handle role-based targeting
       if (data.roles && data.roles.length > 0) {
         console.log(`🔍 Looking for users with roles: ${data.roles.join(', ')}`)
-        
+
         try {
           // Try both exact case and uppercase matching for roles
           const rolesToSearch = data.roles.flatMap(role => [role, role.toUpperCase()])
           console.log(`🔍 Searching for roles (including uppercase): ${rolesToSearch.join(', ')}`)
-          
-          const roleQueries = rolesToSearch.map(role => 
+
+          const roleQueries = rolesToSearch.map(role =>
             usersRef.where('role', '==', role).get()
           )
           const roleResults = await Promise.all(roleQueries)
-          
+
           roleResults.forEach((snapshot, index) => {
             const searchedRole = rolesToSearch[index]
             console.log(`🔍 Found ${snapshot.docs.length} users with role: ${searchedRole}`)
@@ -407,7 +418,7 @@ export class IntegratedNotificationService {
       // The fallback is only used when Firebase permissions fail
 
       // Remove duplicates based on user ID
-      const uniqueUsers = users.filter((user, index, self) => 
+      const uniqueUsers = users.filter((user, index, self) =>
         index === self.findIndex(u => u.id === user.id)
       )
 
@@ -433,7 +444,7 @@ export class IntegratedNotificationService {
       approvalReviewedBy: giftData.approvalReviewedBy, // This should now contain the actual name
       rejectReason: giftData.rejectReason || giftData.REJECT_REASON
     }
-    
+
     return this.sendIntegratedNotification({
       userId: null,
       targetUserIds: targetUsers.length > 0 ? targetUsers : null,
@@ -576,17 +587,85 @@ export class IntegratedNotificationService {
       message: `${giftDataArray.length} gift(s) have been rejected`,
       action: 'bulk_gift_rejected',
       priority: 'high',
-      data: { 
-        giftCount: giftDataArray.length, 
-        rejectedBy, 
+      data: {
+        giftCount: giftDataArray.length,
+        rejectedBy,
         rejectReason,
         giftIds: giftDataArray.map(gift => gift.giftId)
       },
       emailTemplate: 'bulk_gift_rejected',
-      emailData: { 
-        giftDataArray, 
-        rejectedBy, 
+      emailData: {
+        giftDataArray,
+        rejectedBy,
         rejectReason,
+        giftCount: giftDataArray.length
+      },
+      sendEmail: true,
+      sendNotification: true
+    })
+  }
+
+  // New method for delivery status notifications
+  static async sendGiftDeliveryNotification(giftData: any, updatedBy: string, targetRoles: string[]) {
+    console.log('🚀 [DELIVERY] Starting gift delivery notification:', {
+      giftId: giftData.giftId,
+      updatedBy,
+      targetRoles
+    })
+
+    return this.sendIntegratedNotification({
+      userId: null,
+      targetUserIds: null,
+      roles: targetRoles,
+      module: 'gift-approval',
+      type: 'delivery_status',
+      title: 'Gift Delivered',
+      message: `Gift #${giftData.giftId} has been marked as delivered`,
+      action: 'gift_delivered',
+      priority: 'medium',
+      data: {
+        giftId: giftData.giftId,
+        updatedBy,
+        trackingCode: giftData.trackingCode,
+        dispatcher: giftData.dispatcher
+      },
+      emailTemplate: 'gift_delivered',
+      emailData: {
+        ...giftData,
+        updatedBy
+      },
+      sendEmail: true,
+      sendNotification: true
+    })
+  }
+
+  // New method for bulk delivery status notifications
+  static async sendBulkGiftDeliveryNotification(giftDataArray: any[], updatedBy: string, targetRoles: string[]) {
+    console.log('🚀 [BULK DELIVERY] Starting bulk gift delivery notification:', {
+      giftCount: giftDataArray.length,
+      updatedBy,
+      targetRoles
+    })
+
+    return this.sendIntegratedNotification({
+      userId: null,
+      targetUserIds: null,
+      roles: targetRoles,
+      module: 'gift-approval',
+      type: 'bulk_delivery_status',
+      title: 'Multiple Gifts Delivered',
+      message: `${giftDataArray.length} gift(s) have been marked as delivered`,
+      action: 'bulk_gift_delivered',
+      priority: 'medium',
+      data: {
+        giftCount: giftDataArray.length,
+        updatedBy,
+        giftIds: giftDataArray.map(gift => gift.giftId)
+      },
+      emailTemplate: 'bulk_gift_delivered',
+      emailData: {
+        giftDataArray,
+        updatedBy,
         giftCount: giftDataArray.length
       },
       sendEmail: true,
@@ -616,7 +695,7 @@ export class IntegratedNotificationService {
   // Fallback method when Firebase permissions fail
   private static getFallbackUsers(data: IntegratedNotificationData): Array<{ id: string; email: string; name: string; role: string }> {
     console.log('🔄 Using fallback user targeting method')
-    
+
     // For gift rejection notifications, we can use a hardcoded list of admin emails
     // This is a temporary solution until Firebase permissions are fixed
     // Note: Brevo allows sending to any email address, so we can use any valid email
@@ -630,17 +709,17 @@ export class IntegratedNotificationService {
     ]
 
     console.log(`🔄 Fallback users before filtering:`, fallbackUsers.map((u: { id: string; email: string; name: string; role: string }) => ({ id: u.id, email: u.email, name: u.name, role: u.role })))
-    
+
     // Filter out any empty emails and default placeholder emails
-    const filteredUsers = fallbackUsers.filter((user: { id: string; email: string; name: string; role: string }) => 
-      user.email && 
-      user.email.trim() !== '' && 
-      user.email !== 'admin@company.com' && 
+    const filteredUsers = fallbackUsers.filter((user: { id: string; email: string; name: string; role: string }) =>
+      user.email &&
+      user.email.trim() !== '' &&
+      user.email !== 'admin@company.com' &&
       user.email !== 'admin2@company.com'
     )
-    
+
     console.log(`🔄 Fallback users after filtering:`, filteredUsers.map((u: { id: string; email: string; name: string; role: string }) => ({ id: u.id, email: u.email, name: u.name, role: u.role })))
-    
+
     return filteredUsers
   }
 }
