@@ -4,7 +4,7 @@ import { IntegratedNotificationService } from '@/services/integratedNotification
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
-        const { userEmail, giftId, fullName, memberLogin, giftItem, costMyr, category, kamRequestedBy, kamEmail, rejectReason } = body
+        const { userEmail, giftId, fullName, memberLogin, giftItem, cost, category, kamRequestedBy, kamEmail, rejectReason } = body
 
         console.log('🧪 [TEST API] Received gift rejection test request:', {
             userEmail,
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
                 fullName,
                 memberLogin,
                 giftItem,
-                costMyr: parseFloat(costMyr),
+                cost: parseFloat(cost),
                 category,
                 kamRequestedBy,
                 kamEmail: userEmail,
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
 
     } catch (error) {
         console.error('🧪 [TEST API] Gift rejection test error:', error)
-        
+
         return NextResponse.json({
             success: false,
             message: error instanceof Error ? error.message : 'Unknown error occurred',

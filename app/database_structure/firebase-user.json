@@ -1,0 +1,44 @@
+{
+    "id": "6spxJbVQneTu4e41nWuDSA3SBfC2",
+    "name": "zk admin",
+    "email": "zk.lim@aetheriondataworks.com",
+    "role": "ADMIN",
+    "permissions": {
+        "gift-approval": [
+            "VIEW",
+            "SEARCH",
+            "EDIT",
+            "ADD",
+            "DELETE",
+            "IMPORT",
+            "EXPORT"
+        ],
+        "user-management": [
+            "VIEW",
+            "SEARCH",
+            "EDIT",
+            "ADD",
+            "DELETE",
+            "IMPORT",
+            "EXPORT"
+        ],
+        "vip-profile": [
+            "VIEW",
+            "SEARCH",
+            "EDIT",
+            "ADD",
+            "DELETE",
+            "IMPORT",
+            "EXPORT"
+        ],
+        "campaign": [
+            "VIEW",
+            "SEARCH",
+            "EDIT",
+            "ADD",
+            "DELETE",
+            "IMPORT",
+            "EXPORT"
+        ]
+    }
+}

@@ -340,9 +340,13 @@ export class IntegratedNotificationService {
             console.log(`✅ Found user: ${userDoc.id}`)
           } else {
             console.log(`❌ User not found: ${data.userId}`)
+            // Don't use fallback for specific user targeting - just skip notification
+            console.log(`⚠️ Skipping notification for non-existent user: ${data.userId}`)
           }
         } catch (firebaseError) {
           console.error(`❌ Firebase permission error for user ${data.userId}`)
+          // Don't use fallback for specific user targeting - just skip notification
+          console.log(`⚠️ Skipping notification due to Firebase error for user: ${data.userId}`)
         }
       }
 
@@ -437,7 +441,7 @@ export class IntegratedNotificationService {
       fullName: giftData.fullName || giftData.FULL_NAME,
       memberLogin: giftData.memberLogin || giftData.MEMBER_LOGIN,
       giftItem: giftData.giftItem || giftData.GIFT_ITEM,
-      costMyr: giftData.costMyr || giftData.COST_BASE,
+      cost: giftData.cost || giftData.GIFT_COST,
       category: giftData.category || giftData.CATEGORY,
       kamRequestedBy: giftData.kamRequestedBy || giftData.KAM_NAME,
       kamEmail: giftData.kamEmail || giftData.KAM_EMAIL,
@@ -481,7 +485,14 @@ export class IntegratedNotificationService {
     })
   }
 
-  static async sendToSpecificUser(userId: string, title: string, message: string, module: string = 'gift-approval') {
+  static async sendToSpecificUser(
+    userId: string,
+    title: string,
+    message: string,
+    module: string = 'gift-approval',
+    sendEmail: boolean = true,
+    sendNotification: boolean = true
+  ) {
     return this.sendIntegratedNotification({
       userId,
       targetUserIds: null,
@@ -493,12 +504,19 @@ export class IntegratedNotificationService {
       action: 'user_notification',
       priority: 'medium',
       data: { targetUserId: userId },
-      sendEmail: true,
-      sendNotification: true
+      sendEmail,
+      sendNotification
     })
   }
 
-  static async sendToSpecificUsers(targetUserIds: string[], title: string, message: string, module: string = 'gift-approval') {
+  static async sendToSpecificUsers(
+    targetUserIds: string[],
+    title: string,
+    message: string,
+    module: string = 'gift-approval',
+    sendEmail: boolean = true,
+    sendNotification: boolean = true
+  ) {
     return this.sendIntegratedNotification({
       userId: null,
       targetUserIds,
@@ -510,12 +528,19 @@ export class IntegratedNotificationService {
       action: 'users_notification',
       priority: 'medium',
       data: { targetUserIds },
-      sendEmail: true,
-      sendNotification: true
+      sendEmail,
+      sendNotification
     })
   }
 
-  static async sendToRoles(roles: string[], title: string, message: string, module: string = 'gift-approval') {
+  static async sendToRoles(
+    roles: string[],
+    title: string,
+    message: string,
+    module: string = 'gift-approval',
+    sendEmail: boolean = true,
+    sendNotification: boolean = true
+  ) {
     return this.sendIntegratedNotification({
       userId: null,
       targetUserIds: null,
@@ -527,8 +552,8 @@ export class IntegratedNotificationService {
       action: 'role_notification',
       priority: 'medium',
       data: { targetRoles: roles },
-      sendEmail: true,
-      sendNotification: true
+      sendEmail,
+      sendNotification
     })
   }
 

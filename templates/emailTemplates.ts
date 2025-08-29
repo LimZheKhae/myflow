@@ -77,7 +77,7 @@ export class EmailTemplates {
       
       <div class="info-row">
         <span class="info-label">Value:</span>
-        <span class="info-value">${giftData.costMyr} MYR</span>
+        <span class="info-value">${giftData.cost} MYR</span>
       </div>
       
       <div class="info-row">
@@ -135,7 +135,7 @@ export class EmailTemplates {
       
       <div class="info-row">
         <span class="info-label">Value:</span>
-        <span class="info-value">${giftData.costMyr} MYR</span>
+        <span class="info-value">${giftData.cost}</span>
       </div>
       
       <div class="info-row">
@@ -188,7 +188,7 @@ export class EmailTemplates {
       
       <div class="info-row">
         <span class="info-label">Value:</span>
-        <span class="info-value">${giftData.costMyr} MYR</span>
+        <span class="info-value">${giftData.cost} MYR</span>
       </div>
       
       <div class="info-row">
@@ -358,7 +358,7 @@ export class EmailTemplates {
       
       <div class="info-row">
         <span class="info-label">Value:</span>
-        <span class="info-value">${giftData.costMyr} MYR</span>
+        <span class="info-value">${giftData.cost} MYR</span>
       </div>
       
       <div class="info-row">
@@ -441,7 +441,7 @@ export class EmailTemplates {
         <div style="font-size: 14px; color: #6b7280;">
           <div><strong>Player:</strong> ${gift.fullName} (${gift.memberLogin})</div>
           <div><strong>Item:</strong> ${gift.giftItem}</div>
-          <div><strong>Value:</strong> ${gift.costMyr} MYR</div>
+          <div><strong>Value:</strong> ${gift.cost} MYR</div>
           <div><strong>Category:</strong> ${gift.category}</div>
           <div><strong>KAM:</strong> ${gift.kamRequestedBy}</div>
         </div>
@@ -573,7 +573,7 @@ export class EmailTemplates {
       
       <div class="info-row">
         <span class="info-label">Value:</span>
-        <span class="info-value">${giftData.costMyr} MYR</span>
+        <span class="info-value">${giftData.cost} MYR</span>
       </div>
       
       <div class="info-row">

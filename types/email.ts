@@ -48,7 +48,7 @@ export interface GiftEmailData {
   fullName: string
   memberLogin: string
   giftItem: string
-  costMyr: number
+  cost: number
   category: string
   kamRequestedBy: string
   kamEmail: string

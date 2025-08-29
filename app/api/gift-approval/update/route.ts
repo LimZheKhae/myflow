@@ -59,6 +59,7 @@ interface UpdateRequest {
   targetStatus?: string
   // Tab-specific fields
   rejectReason?: string
+  revertReason?: string
   dispatcher?: string
   trackingCode?: string
   trackingStatus?: string
@@ -74,12 +75,13 @@ interface UpdateRequest {
     kamProof?: string
     mktProof?: string
     giftFeedback?: string
+    revertReason?: string
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
-    const { giftId, tab, action, userId, userRole, userPermissions, targetStatus, rejectReason, dispatcher, trackingCode, trackingStatus, kamProof, mktProof, giftFeedback, auditRemark, data }: UpdateRequest = await request.json()
+    const { giftId, tab, action, userId, userRole, userPermissions, targetStatus, rejectReason, revertReason, dispatcher, trackingCode, trackingStatus, kamProof, mktProof, giftFeedback, auditRemark, data }: UpdateRequest = await request.json()
 
     console.log('🔍 [SINGLE UPDATE] Request Debug Info:', {
       giftId,
@@ -219,6 +221,7 @@ export async function PUT(request: NextRequest) {
       userRole,
       targetStatus,
       rejectReason,
+      revertReason: data?.revertReason || revertReason,
       dispatcher: data?.dispatcher || dispatcher,
       trackingCode: data?.trackingCode || trackingCode,
       trackingStatus: data?.trackingStatus || trackingStatus,
@@ -409,17 +412,17 @@ function validateTabPermissions(tab: string, action: string, userRole?: string, 
       break
 
     case 'kam-proof':
-      // KAM Proof tab: Only KAM and Admin can submit proof
+      // KAM Proof tab: Only KAM and Admin can submit proof or revert to MKTOps
       if (!['KAM', 'ADMIN'].includes(userRole)) {
         return {
           isValid: false,
-          message: 'Only KAM and Admin users can submit proof',
+          message: 'Only KAM and Admin users can submit proof or revert to MKTOps',
         }
       }
-      if (action !== 'submit') {
+      if (!['submit', 'revert-to-mktops'].includes(action)) {
         return {
           isValid: false,
-          message: "Invalid action for kam-proof tab. Use 'submit'",
+          message: "Invalid action for kam-proof tab. Use 'submit' or 'revert-to-mktops'",
         }
       }
       break
@@ -484,6 +487,7 @@ function validateWorkflowProgression(tab: string, action: string, currentStatus:
     },
     'kam-proof': {
       submit: ['KAM_Proof'],
+      'revert-to-mktops': ['KAM_Proof'],
     },
     audit: {
       complete: ['SalesOps_Audit'],
@@ -545,10 +549,6 @@ async function validateProcessingRequirements(giftId: number): Promise<{ isValid
         isValid: false,
         message: 'Tracking Status must be "Delivered" to proceed to KAM Proof',
       }
-    }
-
-    if (gift.UPLOADED_BO !== true) {
-      missingFields.push('Uploaded BO (must be true)')
     }
 
     if (missingFields.length > 0) {
@@ -616,6 +616,7 @@ async function performUpdate(
     userRole?: string
     targetStatus?: string
     rejectReason?: string
+    revertReason?: string
     dispatcher?: string
     trackingCode?: string
     trackingStatus?: string
@@ -649,6 +650,18 @@ async function performUpdate(
       case 'processing':
         if (action === 'update-mktops') {
           // Update MKTOps information without changing workflow status
+          // Auto-set MKT_DELIVERED_DATE when tracking status changes to "Delivered"
+          // Set MKT_DELIVERED_DATE to NULL when tracking status changes from "Delivered" to other status
+          let mktDeliveredDate = 'MKT_DELIVERED_DATE' // Keep current value by default
+
+          if (data.trackingStatus === 'Delivered' && data.currentGift?.trackingStatus !== 'Delivered') {
+            // Changing TO delivered from non-delivered
+            mktDeliveredDate = 'CURRENT_TIMESTAMP()'
+          } else if (data.trackingStatus !== 'Delivered' && data.currentGift?.trackingStatus === 'Delivered') {
+            // Changing FROM delivered to non-delivered
+            mktDeliveredDate = 'NULL'
+          }
+
           updateSQL = `
             UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
             SET 
@@ -656,13 +669,14 @@ async function performUpdate(
               TRACKING_CODE = ?,
               TRACKING_STATUS = ?,
               MKT_PROOF = ?,
-              GIFT_FEEDBACK = ?,
+              GIFT_FEEDBACK = NULL,
               PURCHASED_BY = ?,
               MKT_PURCHASE_DATE = CURRENT_TIMESTAMP(),
+              MKT_DELIVERED_DATE = ${mktDeliveredDate},
               LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
             WHERE GIFT_ID = ?
           `
-          updateParams = [data.dispatcher || null, data.trackingCode || null, data.trackingStatus || null, data.mktProof || null, data.giftFeedback || null, data.userId, data.giftId]
+          updateParams = [data.dispatcher || null, data.trackingCode || null, data.trackingStatus || null, data.mktProof || null, data.userId, data.giftId]
         } else if (action === 'reject') {
           // Reject from processing tab (e.g., item sold out)
           newStatus = data.targetStatus || 'Rejected'
@@ -725,18 +739,19 @@ async function performUpdate(
             giftId: data.giftId,
           })
         } else if (action === 'proceed') {
-          // Proceed to next step (KAM_Proof)
+          // Proceed to next step (KAM_Proof) - Reset feedback to NULL
           newStatus = data.targetStatus || 'KAM_Proof'
           updateSQL = `
             UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
             SET 
               WORKFLOW_STATUS = ?,
+              GIFT_FEEDBACK = NULL,
               LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
             WHERE GIFT_ID = ?
           `
           updateParams = [newStatus, data.giftId]
         } else {
-          // Standard processing update - move to KAM_Proof
+          // Standard processing update - move to KAM_Proof - Reset feedback to NULL
           newStatus = data.targetStatus || 'KAM_Proof'
           updateSQL = `
             UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
@@ -745,6 +760,7 @@ async function performUpdate(
               DISPATCHER = ?,
               TRACKING_CODE = ?,
               TRACKING_STATUS = ?,
+              GIFT_FEEDBACK = NULL,
               LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
             WHERE GIFT_ID = ?
           `
@@ -753,19 +769,37 @@ async function performUpdate(
         break
 
       case 'kam-proof':
-        newStatus = data.targetStatus || 'SalesOps_Audit'
-        updateSQL = `
-          UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
-          SET 
-            WORKFLOW_STATUS = ?,
-            KAM_PROOF = ?,
-            GIFT_FEEDBACK = ?,
-            KAM_PROOF_BY = ?,
-            AUDIT_REMARK = NULL,
-            LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
-          WHERE GIFT_ID = ?
-        `
-        updateParams = [newStatus, data.kamProof || null, data.giftFeedback || null, data.userId, data.giftId]
+        if (action === 'revert-to-mktops') {
+          // Revert to MKTOps Processing due to delivery issues
+          newStatus = 'MKTOps_Processing'
+          updateSQL = `
+            UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
+            SET 
+              WORKFLOW_STATUS = ?,
+              TRACKING_STATUS = 'Failed',
+              MKT_DELIVERED_DATE = NULL,
+              GIFT_FEEDBACK = ?,
+              KAM_PROOF_BY = ?,
+              LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
+            WHERE GIFT_ID = ?
+          `
+          updateParams = [newStatus, data.revertReason || null, data.userId, data.giftId]
+        } else {
+          // Standard KAM Proof submission
+          newStatus = data.targetStatus || 'SalesOps_Audit'
+          updateSQL = `
+            UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
+            SET 
+              WORKFLOW_STATUS = ?,
+              KAM_PROOF = ?,
+              GIFT_FEEDBACK = ?,
+              KAM_PROOF_BY = ?,
+              AUDIT_REMARK = NULL,
+              LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
+            WHERE GIFT_ID = ?
+          `
+          updateParams = [newStatus, data.kamProof || null, data.giftFeedback || null, data.userId, data.giftId]
+        }
         break
 
       case 'audit':
@@ -874,7 +908,7 @@ async function performUpdate(
             FULL_NAME,
             MEMBER_LOGIN,
             GIFT_ITEM,
-            COST_BASE,
+            GIFT_COST,
             CATEGORY,
             KAM_NAME,
             KAM_EMAIL,
@@ -913,7 +947,7 @@ async function performUpdate(
             fullName: giftData.FULL_NAME,
             memberLogin: giftData.MEMBER_LOGIN,
             giftItem: giftData.GIFT_ITEM,
-            costMyr: giftData.COST_BASE,
+            cost: giftData.GIFT_COST,
             category: giftData.CATEGORY,
             kamRequestedBy: giftData.KAM_NAME,
             kamEmail: giftData.KAM_EMAIL,
@@ -952,6 +986,61 @@ async function performUpdate(
       }
     }
 
+    // Send integrated notification for revert-to-mktops action
+    if (action === 'revert-to-mktops') {
+      console.log("🔍 [GIFT REVERT] Revert-to-mktops action detected")
+      try {
+        // Get gift data to find the PURCHASED_BY user
+        const giftDataQuery = `
+          SELECT 
+            GD.GIFT_ID,
+            GD.MEMBER_LOGIN,
+            GD.GIFT_ITEM,
+            GD.GIFT_COST,
+            GD.CATEGORY,
+            GD.PURCHASED_BY,
+            GD.CREATED_DATE,
+            GD.LAST_MODIFIED_DATE
+          FROM MY_FLOW.PUBLIC.GIFT_DETAILS GD
+          WHERE GD.GIFT_ID = ?
+        `
+        console.log("🔍 [GIFT REVERT] Gift data query:", giftDataQuery)
+        const giftDataResult = await executeQuery(giftDataQuery, [data.giftId])
+        console.log("🔍 [GIFT REVERT] Gift data result:", giftDataResult)
+
+        if (Array.isArray(giftDataResult) && giftDataResult.length > 0) {
+          const giftData = giftDataResult[0]
+          const purchasedBy = giftData.PURCHASED_BY // This is the Firebase user ID
+
+          if (purchasedBy) {
+            console.log('🔍 [GIFT REVERT] Sending notification to purchaser:', {
+              giftId: data.giftId,
+              purchasedBy: purchasedBy,
+              revertReason: data.revertReason
+            })
+
+            // Send notification to the user who purchased the gift
+            // Both sendEmail and sendNotification are true by default
+            await IntegratedNotificationService.sendToSpecificUser(
+              purchasedBy, // Use the Firebase user ID
+              'Gift Reverted to MKTOps Processing',
+              `Gift #${giftData.GIFT_ID} has been reverted to MKTOps Processing due to delivery issues. Reason: ${data.revertReason || 'Delivery issue detected'}`,
+              'gift-approval',
+              true, // sendEmail: true for revert-to-mktops
+              true  // sendNotification: true for revert-to-mktops
+            )
+
+            console.log('✅ [GIFT REVERT] Notification sent successfully to purchaser')
+          } else {
+            console.log('⚠️ [GIFT REVERT] No PURCHASED_BY found for gift:', data.giftId)
+          }
+        }
+      } catch (notificationError) {
+        console.error('❌ [GIFT REVERT] Error sending notification:', notificationError)
+        // Don't fail the request if notification sending fails
+      }
+    }
+
     // Send integrated notification and email for delivery status updates
     // Only send if tracking status changes TO 'Delivered' from a different status
     if (data.trackingStatus === 'Delivered' && data.currentGift?.trackingStatus !== 'Delivered') {
@@ -965,7 +1054,7 @@ async function performUpdate(
             FULL_NAME,
             MEMBER_LOGIN,
             GIFT_ITEM,
-            COST_BASE,
+            GIFT_COST,
             CATEGORY,
             KAM_NAME,
             KAM_EMAIL,
@@ -1006,7 +1095,7 @@ async function performUpdate(
             fullName: giftData.FULL_NAME,
             memberLogin: giftData.MEMBER_LOGIN,
             giftItem: giftData.GIFT_ITEM,
-            costMyr: giftData.COST_BASE,
+            cost: giftData.GIFT_COST,
             category: giftData.CATEGORY,
             kamRequestedBy: giftData.KAM_NAME,
             kamEmail: giftData.KAM_EMAIL,

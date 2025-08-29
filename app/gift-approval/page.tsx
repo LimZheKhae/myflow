@@ -1,5 +1,4 @@
 'use client'
-import Image from 'next/image'
 import { useState, useEffect, useRef } from 'react'
 import { useFirebaseAuth as useAuth } from '@/contexts/firebase-auth-context'
 import FirebaseLoginForm from '@/components/auth/firebase-login-form'
@@ -18,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Plus, Eye, Upload, CheckCircle, XCircle, Clock, Search, FileText, Truck, Shield, Calendar, User, Package, CheckSquare, Download, ArrowRight, ClipboardCheck, Edit, Users, AlertCircle, UserPlus, Camera, CheckCircle2, Circle, Loader2 } from 'lucide-react'
+import { Plus, Eye, Upload, CheckCircle, XCircle, Clock, Search, FileText, Truck, Shield, Calendar, User, Package, CheckSquare, Download, ArrowRight, ClipboardCheck, Edit, Users, AlertCircle, UserPlus, Camera, CheckCircle2, Circle, Loader2, ArrowLeft } from 'lucide-react'
 import GeometricLoader from "@/components/ui/geometric-loader";
 import InlineLoader from "@/components/ui/inline-loader";
 import { Input } from '@/components/ui/input'
@@ -29,6 +28,9 @@ import { toast } from 'sonner'
 import { exportToCSV, formatMoney, getImageProxyUrl, getImageDownloadUrl, getFilenameFromUrl } from '@/lib/utils'
 import { FileUploader } from '@/components/ui/file-uploader'
 import ImagePopup from '@/components/ui/image-popup'
+import { MultiSelect } from '@/components/ui/multi-select'
+import DateRangePicker from '@/components/date-range-picker'
+import { type DateRange } from 'react-day-picker'
 
 import type { GiftRequestDetails, GiftRequestDetailsView, GiftCategory, WorkflowStatus, TrackingStatus, GiftRequestForm } from '@/types/gift'
 import { REWARD_NAME_OPTIONS, CATEGORY_OPTIONS } from '@/types/gift'
@@ -122,31 +124,6 @@ const WorkflowTimeline: React.FC<{ giftId: number }> = ({ giftId }) => {
       return 'text-red-600 bg-red-100'
     } else {
       return 'text-gray-600 bg-gray-100'
-    }
-  }
-
-  const getStatusIconColor = (title: string | null | undefined) => {
-    if (!title) return 'text-gray-500'
-
-    const titleLower = title.toLowerCase()
-    if (titleLower.includes('gift request submitted') || titleLower.includes('kam request')) {
-      return 'text-blue-500'
-    } else if (titleLower.includes('manager review')) {
-      return 'text-yellow-500'
-    } else if (titleLower.includes('mktops processing') || titleLower.includes('mktops')) {
-      return 'text-purple-500'
-    } else if (titleLower.includes('delivery confirmation') || titleLower.includes('kam proof')) {
-      return 'text-orange-500'
-    } else if (titleLower.includes('audit issue')) {
-      return 'text-amber-500'
-    } else if (titleLower.includes('salesops audit') || titleLower.includes('audit')) {
-      return 'text-indigo-500'
-    } else if (titleLower.includes('completed')) {
-      return 'text-green-500'
-    } else if (titleLower.includes('rejected')) {
-      return 'text-red-500'
-    } else {
-      return 'text-gray-500'
     }
   }
 
@@ -352,8 +329,9 @@ export default function Gifts() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all')
-  const [merchantFilter, setMerchantFilter] = useState<string>('all')
-  const [currencyFilter, setCurrencyFilter] = useState<string>('all')
+  const [merchantFilter, setMerchantFilter] = useState<string[]>(['all'])
+  const [currencyFilter, setCurrencyFilter] = useState<string[]>(['all'])
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
   const [isAnimating, setIsAnimating] = useState(false)
   const [selectedGift, setSelectedGift] = useState<GiftRequestDetailsView | null>(null)
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
@@ -364,6 +342,7 @@ export default function Gifts() {
   const [isMKTOpsModalOpen, setIsMKTOpsModalOpen] = useState(false)
   const [isKAMProofModalOpen, setIsKAMProofModalOpen] = useState(false)
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false)
+  const [isRevertModalOpen, setIsRevertModalOpen] = useState(false)
 
   // Image popup states
   const [isImagePopupOpen, setIsImagePopupOpen] = useState(false)
@@ -384,6 +363,7 @@ export default function Gifts() {
   // Modal form states
   const [rejectingGiftId, setRejectingGiftId] = useState<number | null>(null)
   const [rejectReason, setRejectReason] = useState('')
+  const [revertReason, setRevertReason] = useState('')
   const [bulkDeliveryStatus, setBulkDeliveryStatus] = useState('')
   const [mkTOpsGiftId, setMKTOpsGiftId] = useState<number | null>(null)
   const [mkTOpsForm, setMKTOpsForm] = useState({
@@ -494,6 +474,8 @@ export default function Gifts() {
       setApiLoading(true) // Show skeleton animation during refresh
       const result = await fetchGifts({
         search: debouncedSearchTerm,
+        dateFrom: dateRange?.from?.toISOString().split('T')[0],
+        dateTo: dateRange?.to?.toISOString().split('T')[0],
         // Remove workflowStatus filter - fetch all data
       })
       setGifts(convertDatesInGifts(result.data))
@@ -537,6 +519,8 @@ export default function Gifts() {
         // When searching, we want to search across all workflow statuses
         const result = await fetchGifts({
           search: debouncedSearchTerm,
+          dateFrom: dateRange?.from?.toISOString().split('T')[0],
+          dateTo: dateRange?.to?.toISOString().split('T')[0],
           // Never send workflowStatus filter - always fetch all data
           // This allows searching across all tabs and workflow statuses
         })
@@ -557,15 +541,16 @@ export default function Gifts() {
     }
 
     loadGifts()
-  }, [user, debouncedSearchTerm]) // Use debouncedSearchTerm instead of searchTerm
+  }, [user, debouncedSearchTerm, dateRange]) // Use debouncedSearchTerm instead of searchTerm
 
   // Clear row selection when tab changes
   const handleTabChange = (value: string) => {
     setActiveTab(value)
     setRowSelection({})
     setDeliveryStatusFilter('all') // Reset delivery status filter when switching tabs
-    setMerchantFilter('all') // Reset merchant filter when switching tabs
-    setCurrencyFilter('all') // Reset currency filter when switching tabs
+    setMerchantFilter(['all']) // Reset merchant filter when switching tabs
+    setCurrencyFilter(['all']) // Reset currency filter when switching tabs
+    setDateRange(undefined) // Reset date range filter when switching tabs
     // Reset to first page when changing tabs
     setPagination((prev) => ({ ...prev, page: 1 }))
   }
@@ -1330,6 +1315,54 @@ export default function Gifts() {
     }
   }
 
+  const handleBulkRevertToMKTOps = async (reason: string) => {
+    if (!canEditGifts) {
+      toast.error("You don't have permission to revert gifts to MKTOps")
+      return
+    }
+
+    const selectedRows = Object.keys(rowSelection)
+    if (selectedRows.length === 0) {
+      toast.error('Please select at least one gift to revert')
+      return
+    }
+
+    const selectedGiftIds = getSelectedGiftIds()
+
+    setIsBulkActioning(true)
+    try {
+      const data = await performBulkAction(
+        'bulk_revert_to_mktops',
+        selectedGiftIds,
+        {
+          reason: reason,
+          tab: activeTab,
+        },
+        user?.id || 'unknown'
+      )
+
+      toast.success(`Successfully reverted ${selectedGiftIds.length} gift(s) to MKTOps Processing`)
+
+      // Log activity for bulk revert to MKTOps
+      await logActivity('BULK_REVERT_TO_MKTOPS', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
+        giftIds: selectedGiftIds,
+        count: selectedGiftIds.length,
+        fromStatus: 'KAM_Proof',
+        toStatus: 'MKTOps_Processing',
+        tab: activeTab,
+        reason: reason,
+        remark: `Bulk reverted ${selectedGiftIds.length} gifts to MKTOps Processing: ${reason}`,
+      })
+
+      setRowSelection({})
+      await refreshGiftsData()
+    } catch (error) {
+      toast.error('Failed to revert gifts to MKTOps')
+    } finally {
+      setIsBulkActioning(false)
+    }
+  }
+
   const handleBulkUpdateDeliveryStatus = async (trackingStatus: string) => {
     if (!canEditGifts) {
       toast.error("You don't have permission to update delivery status")
@@ -1657,6 +1690,60 @@ export default function Gifts() {
     }
   }
 
+  // New function to revert KAM Proof to MKTOps Processing
+  const handleRevertToMKTOps = async (giftId: number, reason: string) => {
+    if (!canEditGifts) {
+      toast.error("You don't have permission to revert to MKTOps")
+      return
+    }
+
+    setIsSubmittingKAMProof(giftId)
+    try {
+      const response = await fetch(`/api/gift-approval/update`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          giftId,
+          tab: 'kam-proof',
+          action: 'revert-to-mktops',
+          userId: user?.id || 'unknown',
+          userRole: user?.role,
+          userPermissions: user?.permissions,
+          data: {
+            revertReason: reason.trim(),
+          },
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to revert to MKTOps')
+      }
+
+      toast.success('Gift reverted to MKTOps Processing - delivery issue detected')
+
+      // Log activity
+      await logActivity('REVERT_TO_MKTOPS', user?.id || 'unknown', user?.name || user?.email || 'unknown', user?.email || 'unknown', {
+        giftId: giftId,
+        fromStatus: 'KAM_Proof',
+        toStatus: 'MKTOps_Processing',
+        revertReason: reason,
+        remark: `Reverted to MKTOps Processing: ${reason}`,
+      })
+
+      setIsRevertModalOpen(false)
+      await refreshGiftsData()
+    } catch (error) {
+      console.error('Error reverting to MKTOps:', error)
+      toast.error('Failed to revert to MKTOps')
+    } finally {
+      setIsSubmittingKAMProof(null)
+    }
+  }
+
   const handleRejectFromProcessing = async (giftId: number, reason: string) => {
     if (!canEditGifts) {
       toast.error("You don't have permission to reject gifts")
@@ -1943,13 +2030,13 @@ export default function Gifts() {
     }
 
     // Apply merchant filter
-    if (merchantFilter !== 'all') {
-      filtered = filtered.filter((gift) => gift.merchantName === merchantFilter)
+    if (!merchantFilter.includes('all')) {
+      filtered = filtered.filter((gift) => gift.merchantName && merchantFilter.includes(gift.merchantName))
     }
 
     // Apply currency filter
-    if (currencyFilter !== 'all') {
-      filtered = filtered.filter((gift) => gift.currency === currencyFilter)
+    if (!currencyFilter.includes('all')) {
+      filtered = filtered.filter((gift) => gift.currency && currencyFilter.includes(gift.currency))
     }
 
     // Apply search filter if search term exists
@@ -2603,36 +2690,65 @@ export default function Gifts() {
             )}
 
             {gift.workflowStatus === 'KAM_Proof' && (
-              <RoleBasedActionPermission
-                allowedRoles={['KAM', 'ADMIN']}
-                permission="EDIT"
-                module="gift-approval"
-                alwaysShow={true}
-                disabledFallback={
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-not-allowed text-gray-400" disabled title="KAM role and EDIT permission required">
-                    <Upload className="h-4 w-4" />
-                  </Button>
-                }
-              >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 cursor-pointer text-orange-600 hover:text-orange-700"
-                  onClick={() => {
-                    setKAMProofGiftId(gift.giftId)
-                    setKAMProofForm({
-                      kamProof: null, // Reset to null since we're uploading a new file
-                      giftFeedback: gift.giftFeedback || '',
-                      existingKamProofUrl: getImageProxyUrl(gift.kamProof || null),
-                    })
-                    setIsKAMProofModalOpen(true)
-                  }}
-                  title="Submit KAM Proof"
-                  disabled={isSubmittingKAMProof === gift.giftId}
+              <>
+                <RoleBasedActionPermission
+                  allowedRoles={['KAM', 'ADMIN']}
+                  permission="EDIT"
+                  module="gift-approval"
+                  alwaysShow={true}
+                  disabledFallback={
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-not-allowed text-gray-400" disabled title="KAM role and EDIT permission required">
+                      <Upload className="h-4 w-4" />
+                    </Button>
+                  }
                 >
-                  {isSubmittingKAMProof === gift.giftId ? <InlineLoader size="sm" /> : <Upload className="h-4 w-4" />}
-                </Button>
-              </RoleBasedActionPermission>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 cursor-pointer text-orange-600 hover:text-orange-700"
+                    onClick={() => {
+                      setKAMProofGiftId(gift.giftId)
+                      setKAMProofForm({
+                        kamProof: null, // Reset to null since we're uploading a new file
+                        giftFeedback: gift.giftFeedback || '',
+                        existingKamProofUrl: getImageProxyUrl(gift.kamProof || null),
+                      })
+                      setIsKAMProofModalOpen(true)
+                    }}
+                    title="Submit KAM Proof"
+                    disabled={isSubmittingKAMProof === gift.giftId}
+                  >
+                    {isSubmittingKAMProof === gift.giftId ? <InlineLoader size="sm" /> : <Upload className="h-4 w-4" />}
+                  </Button>
+                </RoleBasedActionPermission>
+
+                <RoleBasedActionPermission
+                  allowedRoles={['KAM', 'ADMIN']}
+                  permission="EDIT"
+                  module="gift-approval"
+                  alwaysShow={true}
+                  disabledFallback={
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-not-allowed text-gray-400" disabled title="KAM role and EDIT permission required">
+                      <ArrowLeft className="h-4 w-4" />
+                    </Button>
+                  }
+                >
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 cursor-pointer text-red-600 hover:text-red-700"
+                    onClick={() => {
+                      setKAMProofGiftId(gift.giftId)
+                      setRevertReason('')
+                      setIsRevertModalOpen(true)
+                    }}
+                    title="Revert to MKTOps (Delivery Issue)"
+                    disabled={isSubmittingKAMProof === gift.giftId}
+                  >
+                    {isSubmittingKAMProof === gift.giftId ? <InlineLoader size="sm" /> : <ArrowLeft className="h-4 w-4" />}
+                  </Button>
+                </RoleBasedActionPermission>
+              </>
             )}
 
             {gift.workflowStatus === 'SalesOps_Audit' && (
@@ -2811,7 +2927,7 @@ export default function Gifts() {
                       Request Gift
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-2xl">
+                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2">
                         <Package className="h-5 w-5" />
@@ -3159,9 +3275,10 @@ export default function Gifts() {
               <CardDescription>Complete workflow for managing gift requests, approvals, and delivery tracking</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Search Bar and Filters */}
+              {/* Enhanced Search Bar and Filters */}
               <div className="space-y-4 mb-4">
-                <div className="flex items-center gap-2">
+                {/* Search Bar */}
+                <div className="flex items-center gap-3">
                   <div className="relative flex-1">
                     {isSearching ? (
                       <Loader2 className="absolute left-3 top-3 h-4 w-4 text-slate-400 animate-spin" />
@@ -3169,68 +3286,108 @@ export default function Gifts() {
                       <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                     )}
                     <Input
-                      placeholder="Search by player name, member login, gift item, KAM name/email, or gift ID..."
+                      placeholder="Search by player name, member login, gift item, PIC name/email, or gift ID..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 h-10"
                     />
                   </div>
                 </div>
 
-                {/* Filters Row */}
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="merchantFilter" className="text-sm font-medium text-gray-700 whitespace-nowrap">
-                      Merchant:
+                {/* Advanced Filters */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Merchant Multi-Select */}
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium text-gray-700">
+                      Merchant
                     </Label>
-                    <Select value={merchantFilter} onValueChange={setMerchantFilter}>
-                      <SelectTrigger className="w-32 h-8 text-sm">
-                        <SelectValue placeholder="All" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All</SelectItem>
-                        {MERCHANTS.filter(merchant => !user?.merchants || user.merchants.length === 0 || user.merchants.includes(merchant)).map((merchant) => (
-                          <SelectItem key={merchant} value={merchant}>
-                            {merchant}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <MultiSelect
+                      options={MERCHANTS.filter(merchant => !user?.merchants || user.merchants.length === 0 || user.merchants.includes(merchant)).map(merchant => ({
+                        value: merchant,
+                        label: merchant
+                      }))}
+                      selectedValues={merchantFilter.includes('all') ? [] : merchantFilter}
+                      onSelectionChange={(values) => setMerchantFilter(values.length === 0 ? ['all'] : values)}
+                      placeholder="All Merchants"
+                      className="h-8"
+                    />
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="currencyFilter" className="text-sm font-medium text-gray-700 whitespace-nowrap">
-                      Currency:
+                  {/* Currency Multi-Select */}
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium text-gray-700">
+                      Currency
                     </Label>
-                    <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
-                      <SelectTrigger className="w-24 h-8 text-sm">
-                        <SelectValue placeholder="All" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All</SelectItem>
-                        {CURRENCIES.filter(currency => !user?.currencies || user.currencies.length === 0 || user.currencies.includes(currency)).map((currency) => (
-                          <SelectItem key={currency} value={currency}>
-                            {currency}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <MultiSelect
+                      options={CURRENCIES.filter(currency => !user?.currencies || user.currencies.length === 0 || user.currencies.includes(currency)).map(currency => ({
+                        value: currency,
+                        label: currency
+                      }))}
+                      selectedValues={currencyFilter.includes('all') ? [] : currencyFilter}
+                      onSelectionChange={(values) => setCurrencyFilter(values.length === 0 ? ['all'] : values)}
+                      placeholder="All Currencies"
+                      className="h-8"
+                    />
                   </div>
 
-                  {(merchantFilter !== 'all' || currencyFilter !== 'all') && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setMerchantFilter('all')
-                        setCurrencyFilter('all')
-                      }}
-                      className="text-gray-500 hover:text-gray-700"
-                    >
-                      Clear Filters
-                    </Button>
-                  )}
+                  {/* Request Date Range Picker */}
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium text-gray-700">
+                      Request Date
+                    </Label>
+                    <DateRangePicker
+                      date={dateRange}
+                      onDateChange={setDateRange}
+                      placeholder="Select date range"
+                      className="h-8"
+                      buttonClassName="h-8"
+                    />
+                  </div>
+
+                  {/* Clear Filters Button */}
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium text-gray-700 opacity-0">
+                      Actions
+                    </Label>
+                    {(!merchantFilter.includes('all') || !currencyFilter.includes('all') || dateRange?.from || dateRange?.to) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setMerchantFilter(['all'])
+                          setCurrencyFilter(['all'])
+                          setDateRange(undefined)
+                        }}
+                        className="h-8 w-full text-gray-500 hover:text-gray-700 text-xs"
+                      >
+                        Clear All Filters
+                      </Button>
+                    )}
+                  </div>
                 </div>
+
+                {/* Active Filters Display */}
+                {(!merchantFilter.includes('all') || !currencyFilter.includes('all') || dateRange?.from || dateRange?.to) && (
+                  <div className="flex flex-wrap items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <span className="text-sm font-medium text-blue-800">Active Filters:</span>
+                    {!merchantFilter.includes('all') && (
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                        Merchant: {merchantFilter.join(', ')}
+                      </Badge>
+                    )}
+                    {!currencyFilter.includes('all') && (
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                        Currency: {currencyFilter.join(', ')}
+                      </Badge>
+                    )}
+                    {dateRange?.from && (
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                        Date: {dateRange.from.toLocaleDateString()}
+                        {dateRange.to && ` - ${dateRange.to.toLocaleDateString()}`}
+                      </Badge>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 mb-4">
@@ -3274,13 +3431,7 @@ export default function Gifts() {
 
                         refreshGiftsData()
                       }}
-                      user={{
-                        id: user?.id || '',
-                        name: user?.name || '',
-                        email: user?.email || '',
-                        role: user?.role || '',
-                        permissions: user?.permissions || {},
-                      }}
+                      user={user}
                     />
                   </KAMAndAdminActionWithPermission>
                 )}
@@ -3312,13 +3463,7 @@ export default function Gifts() {
                         console.log('Bulk update completed:', data)
                         refreshGiftsData()
                       }}
-                      user={{
-                        id: user?.id || '',
-                        name: user?.name || '',
-                        email: user?.email || '',
-                        role: user?.role || '',
-                        permissions: user?.permissions || {},
-                      }}
+                      user={user}
                     />
                   </RoleBasedActionPermission>
                 )}
@@ -3724,6 +3869,81 @@ export default function Gifts() {
                               {isBulkActioning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ArrowRight className="h-4 w-4 mr-2" />}
                               Proceed to Audit ({Object.keys(rowSelection).length})
                             </Button>
+                          </RoleBasedActionPermission>
+
+                          <RoleBasedActionPermission
+                            allowedRoles={['KAM', 'ADMIN']}
+                            permission="EDIT"
+                            module="gift-approval"
+                            alwaysShow={true}
+                            disabledFallback={
+                              <Button size="sm" variant="outline" disabled className="bg-gray-400 text-white opacity-50 cursor-not-allowed" title="KAM role and EDIT permission required">
+                                <ArrowLeft className="h-4 w-4 mr-2" />
+                                Revert to MKTOps ({Object.keys(rowSelection).length})
+                              </Button>
+                            }
+                          >
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="outline" className="bg-red-600 text-white hover:bg-red-700" disabled={isBulkActioning} title="Revert selected gifts to MKTOps Processing due to delivery issues">
+                                  <ArrowLeft className="h-4 w-4 mr-2" />
+                                  Revert to MKTOps ({Object.keys(rowSelection).length})
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-md">
+                                <DialogHeader>
+                                  <DialogTitle className="flex items-center gap-2">
+                                    <ArrowLeft className="h-5 w-5 text-red-600" />
+                                    Bulk Revert to MKTOps
+                                  </DialogTitle>
+                                  <DialogDescription>
+                                    Revert {Object.keys(rowSelection).length} selected gift(s) back to MKTOps Processing due to delivery issues. This will set tracking status to "Failed" and notify MKTOps.
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div>
+                                    <Label htmlFor="bulkRevertReason">
+                                      Revert Reason <span className="text-red-500">*</span>
+                                    </Label>
+                                    <Textarea
+                                      id="bulkRevertReason"
+                                      placeholder="Explain why the gifts need to be reverted..."
+                                      value={revertReason}
+                                      onChange={(e) => setRevertReason(e.target.value)}
+                                      rows={3}
+                                      className="mt-1"
+                                    />
+                                  </div>
+                                  <div className="flex justify-end space-x-2">
+                                    <DialogTrigger asChild>
+                                      <Button variant="outline">Cancel</Button>
+                                    </DialogTrigger>
+                                    <Button
+                                      onClick={() => {
+                                        if (revertReason.trim()) {
+                                          handleBulkRevertToMKTOps(revertReason.trim())
+                                          setRevertReason('')
+                                        }
+                                      }}
+                                      disabled={!revertReason.trim() || isBulkActioning}
+                                      className="bg-red-600 hover:bg-red-700"
+                                    >
+                                      {isBulkActioning ? (
+                                        <>
+                                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                          Reverting...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <ArrowLeft className="h-4 w-4 mr-2" />
+                                          Revert {Object.keys(rowSelection).length} Gift(s)
+                                        </>
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
                           </RoleBasedActionPermission>
                         </>
                       )}
@@ -4381,6 +4601,69 @@ export default function Gifts() {
                   )}
                 </Button>
               </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revert to MKTOps Modal */}
+      <Dialog open={isRevertModalOpen} onOpenChange={setIsRevertModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowLeft className="h-5 w-5 text-red-600" />
+              Revert to MKTOps Processing
+            </DialogTitle>
+            <div className="space-y-2">
+              <DialogDescription>
+                Revert this gift back to MKTOps Processing due to delivery issues. This will:
+              </DialogDescription>
+              <ul className="list-disc list-inside mt-2 text-sm text-amber-600">
+                <li>Set tracking status to "Failed"</li>
+                <li>Clear delivery date</li>
+                <li>Notify MKTOps about the delivery issue</li>
+              </ul>
+            </div>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="revertReason">
+                Revert Reason <span className="text-red-500">*</span>
+              </Label>
+              <Textarea
+                id="revertReason"
+                value={revertReason}
+                onChange={(e) => setRevertReason(e.target.value)}
+                placeholder="Explain why the gift needs to be reverted (e.g., delivery not received, wrong address, etc.)..."
+                rows={4}
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setIsRevertModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (kamProofGiftId && revertReason.trim()) {
+                    handleRevertToMKTOps(kamProofGiftId, revertReason.trim())
+                    setRevertReason('')
+                  }
+                }}
+                disabled={!revertReason.trim() || isSubmittingKAMProof === kamProofGiftId}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {isSubmittingKAMProof === kamProofGiftId ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Reverting...
+                  </>
+                ) : (
+                  <>
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Revert to MKTOps
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </DialogContent>

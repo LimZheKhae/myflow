@@ -39,7 +39,7 @@ Date, PIC, Member Login, Full Name, HP Number, Address, Reward Name, Gift Cost (
 - Trim leading/trailing spaces.  
 - `memberLogin` → must exist in VIP list (for **Pending** stage).  
 - `giftItem` → required.  
-- `costMyr`, `costVnd` → optional, must be **numeric** or **null**, positive only.  
+- `cost`, `costVnd` → optional, must be **numeric** or **null**, positive only.  
 
 ---
 
@@ -47,10 +47,10 @@ Date, PIC, Member Login, Full Name, HP Number, Address, Reward Name, Gift Cost (
 
 #### Processing Stage
 **Template**:  
-`giftId, giftItem, costMyr, memberLogin, Dispatcher, trackingCode, Status, uploadedBo (Yes/No)`  
+`giftId, giftItem, cost, memberLogin, Dispatcher, trackingCode, Status, uploadedBo (Yes/No)`  
 
 **Business Rules**:
-- `giftItem`, `costMyr`, `memberLogin` → not updatable (display-only for verification).  
+- `giftItem`, `cost`, `memberLogin` → not updatable (display-only for verification).  
 - `giftId` must exist.  
 - `dispatcher`, `trackingCode` → required.  
 - `status` → optional, values limited to `{Pending, In Transit, Delivered, Failed}`.  
@@ -66,7 +66,7 @@ Date, PIC, Member Login, Full Name, HP Number, Address, Reward Name, Gift Cost (
 
 #### KAM Proof Stage
 **Template**:  
-`giftId, giftItem, costMyr, memberLogin, receiverFeedback`  
+`giftId, giftItem, cost, memberLogin, receiverFeedback`  
 
 **Rules**:
 - `giftId` must exist.  

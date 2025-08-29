@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user has ADD permission for gift-approval module
-    if (!userPermissions || !userPermissions['gift-approval'] || !userPermissions['gift-approval'].includes('ADD')) {
+    if (!userPermissions || !userPermissions['gift-approval'] || !userPermissions['gift-approval'].includes('IMPORT') || !userPermissions['gift-approval'].includes('ADD')) {
       return NextResponse.json({
         success: false,
         message: 'Insufficient module permissions. ADD permission required for gift-approval module.',
@@ -145,11 +145,11 @@ export async function POST(request: NextRequest) {
               MEMBER_ID, MEMBER_LOGIN, REWARD_NAME, GIFT_ITEM,
               GIFT_COST, CURRENCY, DESCRIPTION, REWARD_CLUB_ORDER, CATEGORY,
               LAST_MODIFIED_DATE
-            ) VALUES (?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
+            ) VALUES (?, ?, CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP())
           `
 
           // Use the validated data structure from frontend validation
-          const giftCost = parseFloat(row.value) || 0
+          const giftCost = parseFloat(row.giftCost) || 0
           const currency = row.currency || 'MYR'
 
           const insertParams = [
@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
             row.rewardName?.trim() || null, // REWARD_NAME
             row.giftItem.trim(), // GIFT_ITEM
             giftCost, // GIFT_COST
-            currency, // CURRENCY (from member profile or default MYR)
+            currency, // CURRENCY (from CSV)
             row.description?.trim() || null, // DESCRIPTION
             row.rewardClubOrder?.trim() || null, // REWARD_CLUB_ORDER
             row.category.trim(), // CATEGORY
@@ -282,7 +282,7 @@ export async function POST(request: NextRequest) {
         SET 
           IS_ACTIVE = FALSE,
           COMPLETED_AT = CURRENT_TIMESTAMP()
-        WHERE BATCH_ID = ? AND
+        WHERE BATCH_ID = ?
       `
 
       const updateBatchParams = [batchId]

@@ -47,6 +47,28 @@ interface UploadResult {
   batchId?: string
 }
 
+interface CorrectionSuggestion {
+  rowNumber: number
+  field: string
+  currentValue: string
+  suggestedValue: string
+  reason: string
+  memberOptions?: Array<{
+    memberLogin: string
+    memberName: string
+    merchant: string
+    currency: string
+    memberId: number
+  }>
+}
+
+interface CorrectedRow {
+  rowNumber: number
+  originalData: any
+  correctedData: any
+  suggestions: CorrectionSuggestion[]
+}
+
 export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user }: BulkUploadDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
 
@@ -58,6 +80,12 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
   const [activeTab, setActiveTab] = useState('upload')
   const [fileUploaderReset, setFileUploaderReset] = useState(false)
 
+  // Correction feature state
+  const [correctionSuggestions, setCorrectionSuggestions] = useState<CorrectionSuggestion[]>([])
+  const [correctedRows, setCorrectedRows] = useState<CorrectedRow[]>([])
+  const [showCorrectionDialog, setShowCorrectionDialog] = useState(false)
+  const [originalCSVData, setOriginalCSVData] = useState<any[]>([])
+
   // Reset function to clear all state when dialog closes
   const resetDialog = () => {
     setValidationResult(null)
@@ -65,6 +93,10 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
     setActiveTab('upload')
     setIsUploading(false)
     setFileUploaderReset(true)
+    setCorrectionSuggestions([])
+    setCorrectedRows([])
+    setShowCorrectionDialog(false)
+    setOriginalCSVData([])
 
     // Reset the file uploader reset flag after a short delay
     setTimeout(() => {
@@ -72,16 +104,204 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
     }, 100)
   }
 
+  // Generate correction suggestions based on validation errors
+  const generateCorrectionSuggestions = (csvData: any[], errors: string[]) => {
+    const suggestions: CorrectionSuggestion[] = []
+    const correctedRows: CorrectedRow[] = []
+
+    // Parse errors to extract row numbers and field information
+    errors.forEach(error => {
+      const rowMatch = error.match(/Row (\d+):/)
+      if (!rowMatch) return
+
+      const rowNumber = parseInt(rowMatch[1])
+      const rowIndex = rowNumber - 2 // Convert to 0-based index
+      const rowData = csvData[rowIndex]
+
+      if (!rowData) return
+
+      // Handle member login not found
+      if (error.includes('not found in member database')) {
+        const memberLoginMatch = error.match(/Member login "([^"]+)"/)
+        if (memberLoginMatch) {
+          const memberLogin = memberLoginMatch[1]
+          const similarMembers = memberProfiles.filter(member =>
+            member.memberLogin.toLowerCase().includes(memberLogin.toLowerCase()) ||
+            member.memberName.toLowerCase().includes(memberLogin.toLowerCase())
+          )
+
+          if (similarMembers.length > 0) {
+            suggestions.push({
+              rowNumber,
+              field: 'memberLogin',
+              currentValue: memberLogin,
+              suggestedValue: similarMembers[0].memberLogin,
+              reason: 'Member login not found. Similar members found.',
+              memberOptions: similarMembers.map(member => ({
+                memberLogin: member.memberLogin,
+                memberName: member.memberName,
+                merchant: member.merchantName || '',
+                currency: member.currency || '',
+                memberId: member.memberId
+              }))
+            })
+          }
+        }
+      }
+
+      // Handle merchant mismatch
+      if (error.includes('does not exist within the selected merchant')) {
+        const memberLoginMatch = error.match(/Member "([^"]+)"/)
+        const csvMerchantMatch = error.match(/merchant "([^"]+)"/)
+        const actualMerchantMatch = error.match(/belongs to merchant "([^"]+)"/)
+
+        if (memberLoginMatch && csvMerchantMatch && actualMerchantMatch) {
+          const memberLogin = memberLoginMatch[1]
+          const csvMerchant = csvMerchantMatch[1]
+          const actualMerchant = actualMerchantMatch[1]
+
+          suggestions.push({
+            rowNumber,
+            field: 'merchant',
+            currentValue: csvMerchant,
+            suggestedValue: actualMerchant,
+            reason: `Member "${memberLogin}" belongs to merchant "${actualMerchant}", not "${csvMerchant}"`
+          })
+        }
+      }
+
+      // Handle currency mismatch
+      if (error.includes('currency mismatch')) {
+        const memberLoginMatch = error.match(/Member "([^"]+)"/)
+        const csvCurrencyMatch = error.match(/CSV shows "([^"]+)"/)
+        const actualCurrencyMatch = error.match(/actual currency is "([^"]+)"/)
+
+        if (memberLoginMatch && csvCurrencyMatch && actualCurrencyMatch) {
+          const memberLogin = memberLoginMatch[1]
+          const csvCurrency = csvCurrencyMatch[1]
+          const actualCurrency = actualCurrencyMatch[1]
+
+          suggestions.push({
+            rowNumber,
+            field: 'currency',
+            currentValue: csvCurrency,
+            suggestedValue: actualCurrency,
+            reason: `Member "${memberLogin}" has currency "${actualCurrency}", not "${csvCurrency}"`
+          })
+        }
+      }
+
+      // Handle invalid category
+      if (error.includes('Invalid category')) {
+        const categoryMatch = error.match(/Invalid category "([^"]+)"/)
+        if (categoryMatch) {
+          const invalidCategory = categoryMatch[1]
+          const normalizedCategory = CATEGORY_OPTIONS.find(option =>
+            option.toLowerCase() === invalidCategory.toLowerCase()
+          )
+
+          if (normalizedCategory) {
+            suggestions.push({
+              rowNumber,
+              field: 'category',
+              currentValue: invalidCategory,
+              suggestedValue: normalizedCategory,
+              reason: 'Category case correction'
+            })
+          }
+        }
+      }
+
+      // Handle invalid reward name
+      if (error.includes('Invalid reward name')) {
+        const rewardMatch = error.match(/Invalid reward name "([^"]+)"/)
+        if (rewardMatch) {
+          const invalidReward = rewardMatch[1]
+          const normalizedReward = REWARD_NAME_OPTIONS.find(option =>
+            option.toLowerCase() === invalidReward.toLowerCase()
+          )
+
+          if (normalizedReward) {
+            suggestions.push({
+              rowNumber,
+              field: 'rewardName',
+              currentValue: invalidReward,
+              suggestedValue: normalizedReward,
+              reason: 'Reward name case correction'
+            })
+          }
+        }
+      }
+    })
+
+    // Group suggestions by row
+    const suggestionsByRow = suggestions.reduce((acc, suggestion) => {
+      if (!acc[suggestion.rowNumber]) {
+        acc[suggestion.rowNumber] = []
+      }
+      acc[suggestion.rowNumber].push(suggestion)
+      return acc
+    }, {} as Record<number, CorrectionSuggestion[]>)
+
+    // Create corrected rows
+    Object.entries(suggestionsByRow).forEach(([rowNumberStr, rowSuggestions]) => {
+      const rowNumber = parseInt(rowNumberStr)
+      const rowIndex = rowNumber - 2
+      const originalData = csvData[rowIndex]
+      const correctedData = { ...originalData }
+
+      rowSuggestions.forEach(suggestion => {
+        correctedData[suggestion.field] = suggestion.suggestedValue
+      })
+
+      correctedRows.push({
+        rowNumber,
+        originalData,
+        correctedData,
+        suggestions: rowSuggestions
+      })
+    })
+
+    return { suggestions, correctedRows }
+  }
+
+  // Apply corrections to CSV data
+  const applyCorrections = (csvData: any[], correctedRows: CorrectedRow[]) => {
+    const correctedCSV = [...csvData]
+
+    correctedRows.forEach(correctedRow => {
+      const rowIndex = correctedRow.rowNumber - 2
+      if (rowIndex >= 0 && rowIndex < correctedCSV.length) {
+        correctedCSV[rowIndex] = correctedRow.correctedData
+      }
+    })
+
+    return correctedCSV
+  }
+
+  // Download corrected CSV
+  const downloadCorrectedCSV = (csvData: any[], filename: string) => {
+    const csv = Papa.unparse(csvData)
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', filename)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   // CSV validation rules based on module and tab
   const getValidationRules = () => {
     const rules: Record<string, Record<string, any>> = {
       'gift-approval': {
         pending: {
-          requiredFields: ['memberLogin', 'giftItem', 'category', 'costMyr'],
-          optionalFields: ['rewardName', 'rewardClubOrder', 'remark', 'costLocal'],
+          requiredFields: ['merchant', 'memberLogin', 'currency', 'giftItem', 'category', 'giftCost', 'rewardName'],
+          optionalFields: ['rewardClubOrder', 'description'],
           fieldTypes: {
-            costMyr: 'number',
-            costLocal: 'number',
+            giftCost: 'number',
             category: CATEGORY_OPTIONS,
             rewardName: REWARD_NAME_OPTIONS,
           },
@@ -144,6 +364,8 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
           memberName: member.memberName,
           memberId: member.memberId,
           currency: member.currency,
+          merchant: member.merchantName, // Add merchant name from member profile (not merchant code)
+          merchantName: member.merchantName, // Include for debugging
         })),
         invalid: validation.invalid,
       }
@@ -174,6 +396,14 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
         const bulkValidationResult = await bulkValidateMemberLogins(memberLogins)
 
         if (bulkValidationResult) {
+          // Debug: Log the member data being retrieved
+          console.log('🔍 Member data from bulk validation:', bulkValidationResult.valid.map(member => ({
+            memberLogin: member.memberLogin,
+            merchantCode: member.merchant,
+            merchantName: member.merchantName,
+            currency: member.currency
+          })))
+
           // Create a map for fast lookup
           bulkValidationResult.valid.forEach((player: any) => {
             validationMap.set(player.memberLogin.toLowerCase(), {
@@ -181,6 +411,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
               memberLogin: player.memberLogin,
               memberId: player.memberId,
               currency: player.currency,
+              merchant: player.merchant, // Add merchant from member profile
             })
           })
 
@@ -263,23 +494,73 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                 }
               }
 
-              // Validate costMyr (required) and costLocal (optional)
-              const costMyr = row.costMyr ? parseFloat(row.costMyr) : null
-              const costLocal = row.costLocal ? parseFloat(row.costLocal) : null
-
-              if (costMyr === null || isNaN(costMyr) || costMyr <= 0) {
-                errors.push(`Row ${rowNumber}: costMyr is required and must be a positive number`)
+              // Validate merchant and currency fields
+              if (!row.merchant || row.merchant.toString().trim() === '') {
+                errors.push(`Row ${rowNumber}: Missing required field "merchant"`)
                 rowValid = false
               }
 
-              if (costLocal !== null && (isNaN(costLocal) || costLocal <= 0)) {
-                errors.push(`Row ${rowNumber}: costLocal must be a positive number if provided`)
+              if (!row.currency || row.currency.toString().trim() === '') {
+                errors.push(`Row ${rowNumber}: Missing required field "currency"`)
+                rowValid = false
+              }
+
+              // Validate uploader has permission to access the selected merchant & currency
+              if (user?.permissions) {
+                const userMerchants = user.permissions['merchants'] || []
+                const userCurrencies = user.permissions['currencies'] || []
+
+                if (userMerchants.length > 0 && !userMerchants.includes(row.merchant.trim())) {
+                  errors.push(`Row ${rowNumber}: Uploader does not have permission to access merchant "${row.merchant.trim()}"`)
+                  rowValid = false
+                }
+
+                if (userCurrencies.length > 0 && !userCurrencies.includes(row.currency.trim())) {
+                  errors.push(`Row ${rowNumber}: Uploader does not have permission to access currency "${row.currency.trim()}"`)
+                  rowValid = false
+                }
+              }
+
+              // Validate that the merchant and currency in CSV match the member's actual merchant and currency
+              console.log(`Row ${rowNumber} - Merchant comparison:`, {
+                csvMerchant: row.merchant.trim(),
+                memberMerchant: memberData.merchant,
+                match: memberData.merchant === row.merchant.trim()
+              })
+
+              if (memberData.merchant && memberData.merchant !== row.merchant.trim()) {
+                errors.push(`Row ${rowNumber}: Member "${row.memberLogin.trim()}" does not exist within the selected merchant "${row.merchant.trim()}". Member belongs to merchant "${memberData.merchant}"`)
+                rowValid = false
+              }
+
+              if (memberData.currency && memberData.currency !== row.currency.trim()) {
+                errors.push(`Row ${rowNumber}: Member "${row.memberLogin.trim()}" currency mismatch. CSV shows "${row.currency.trim()}" but member's actual currency is "${memberData.currency}"`)
+                rowValid = false
+              }
+
+              // Validate giftCost (required)
+              const giftCost = row.giftCost ? parseFloat(row.giftCost) : null
+
+              if (giftCost === null || isNaN(giftCost) || giftCost <= 0) {
+                errors.push(`Row ${rowNumber}: giftCost is required and must be a positive number`)
                 rowValid = false
               }
 
               if (rowValid) {
-                // Get member currency for automatic currency assignment
-                const memberCurrency = memberData.currency || 'MYR'
+                // Use member's actual merchant and currency (strict validation - no fallbacks)
+                const memberMerchant = memberData.merchant
+                const memberCurrency = memberData.currency
+
+                // Additional validation to ensure member data has valid merchant and currency
+                if (!memberMerchant || memberMerchant.trim() === '') {
+                  errors.push(`Row ${rowNumber}: Member "${row.memberLogin.trim()}" has no merchant information in the database`)
+                  rowValid = false
+                }
+
+                if (!memberCurrency || memberCurrency.trim() === '') {
+                  errors.push(`Row ${rowNumber}: Member "${row.memberLogin.trim()}" has no currency information in the database`)
+                  rowValid = false
+                }
 
                 // Normalize category and rewardName to proper case
                 const normalizedCategory = CATEGORY_OPTIONS.find(option =>
@@ -292,17 +573,26 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
 
                 // Transform CSV row to match Zod schema format with the member data
                 const giftRequestData = {
+                  merchant: memberMerchant, // Use member's actual merchant
                   memberName: memberData.memberName || row.memberLogin.trim(),
                   memberLogin: row.memberLogin.trim(),
                   memberId: memberData.memberId,
                   giftItem: row.giftItem.trim(),
                   rewardName: normalizedRewardName,
                   rewardClubOrder: row.rewardClubOrder?.trim() || '',
-                  value: costMyr ? costMyr.toString() : '',
-                  valueLocal: costLocal ? costLocal.toString() : '',
+                  value: giftCost ? giftCost.toString() : '',
+                  currency: memberCurrency, // Use member's actual currency
                   description: (row.description || row.remark)?.trim() || '', // Handle both 'description' and 'remark' fields
                   category: normalizedCategory,
                 }
+
+                // Debug: Log the data being passed to Zod schema
+                console.log(`Row ${rowNumber} - giftRequestData:`, {
+                  merchant: giftRequestData.merchant,
+                  currency: giftRequestData.currency,
+                  memberLogin: giftRequestData.memberLogin,
+                  memberId: giftRequestData.memberId
+                })
 
                 // Validate using Zod schema
                 const validatedData = giftRequestFormSchema.parse(giftRequestData)
@@ -311,9 +601,9 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                   ...validatedData,
                   memberLogin: row.memberLogin.trim(),
                   memberId: memberData.memberId,
-                  costMyr: costMyr,
-                  costLocal: costLocal,
-                  currency: memberCurrency,
+                  giftCost: giftCost,
+                  currency: memberCurrency, // Use member's actual currency
+                  merchant: memberMerchant, // Use member's actual merchant
                   remark: (row.description || row.remark)?.trim() || '', // Keep original description/remark for frontend display
                   description: (row.description || row.remark)?.trim() || '', // Use description for backend
                   _rowNumber: rowNumber,
@@ -420,17 +710,11 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                   }
                 }
 
-                // Validate costMyr (required) and costLocal (optional)
-                const costMyr = row.costMyr ? parseFloat(row.costMyr) : null
-                const costLocal = row.costLocal ? parseFloat(row.costLocal) : null
+                // Validate giftCost (required)
+                const giftCost = row.giftCost ? parseFloat(row.giftCost) : null
 
-                if (costMyr === null || isNaN(costMyr) || costMyr <= 0) {
-                  errors.push(`Row ${rowNumber}: costMyr is required and must be a positive number`)
-                  rowValid = false
-                }
-
-                if (costLocal !== null && (isNaN(costLocal) || costLocal <= 0)) {
-                  errors.push(`Row ${rowNumber}: costLocal must be a positive number if provided`)
+                if (giftCost === null || isNaN(giftCost) || giftCost <= 0) {
+                  errors.push(`Row ${rowNumber}: giftCost is required and must be a positive number`)
                   rowValid = false
                 }
 
@@ -446,13 +730,14 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
 
                   // Transform CSV row to match Zod schema format with the member data
                   const giftRequestData = {
+                    merchant: row.merchant?.trim() || 'Unknown', // Use CSV merchant
                     memberName: row.memberLogin.trim(), // Use memberLogin as memberName for now
                     memberLogin: row.memberLogin.trim(),
                     giftItem: row.giftItem.trim(),
                     rewardName: normalizedRewardName,
                     rewardClubOrder: row.rewardClubOrder?.trim() || '',
-                    value: costMyr ? costMyr.toString() : '',
-                    valueLocal: costLocal ? costLocal.toString() : '',
+                    value: giftCost ? giftCost.toString() : '',
+                    currency: row.currency?.trim() || 'MYR', // Use CSV currency
                     description: (row.description || row.remark)?.trim() || '', // Handle both 'description' and 'remark' fields
                     category: normalizedCategory,
                   }
@@ -463,8 +748,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                   validData.push({
                     ...validatedData,
                     memberLogin: row.memberLogin.trim(),
-                    costMyr: costMyr,
-                    costLocal: costLocal,
+                    giftCost: giftCost,
                     currency: 'MYR', // Default currency when member validation fails
                     remark: (row.description || row.remark)?.trim() || '', // Keep original description/remark for frontend display
                     description: (row.description || row.remark)?.trim() || '', // Use description for backend
@@ -552,18 +836,41 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
 
   const handleFileUpload = async (file: File | null) => {
     if (!file) return
+    await processCSVData(file)
+  }
+
+  const processCSVData = async (file: File | { data: any[] }) => {
     try {
       setIsUploading(true)
       setValidationResult(null)
       setUploadResult(null)
 
-      // Parse CSV
-      const text = await file.text()
-      const result = Papa.parse(text, {
-        header: true,
-        skipEmptyLines: true,
-        transform: (value) => value.trim(),
-      })
+      let result: Papa.ParseResult<any>
+
+      // Check if it's a File object or data object
+      if (file instanceof File) {
+        // Parse CSV from file
+        const text = await file.text()
+        result = Papa.parse(text, {
+          header: true,
+          skipEmptyLines: true,
+          transform: (value) => value.trim(),
+        })
+      } else {
+        // Use provided data directly
+        result = {
+          data: file.data,
+          errors: [],
+          meta: {
+            delimiter: ',',
+            linebreak: '\n',
+            aborted: false,
+            truncated: false,
+            cursor: 0,
+            fields: Object.keys(file.data[0] || {})
+          }
+        }
+      }
 
       if (result.errors.length > 0) {
         toast.error('CSV parsing failed')
@@ -592,6 +899,17 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
         setActiveTab('preview')
       } else {
         toast.error(`Validation failed! ${validation.errors.length} errors found`)
+
+        // Generate correction suggestions
+        const { suggestions, correctedRows: newCorrectedRows } = generateCorrectionSuggestions(result.data, validation.errors)
+        setCorrectionSuggestions(suggestions)
+        setCorrectedRows(newCorrectedRows)
+        setOriginalCSVData(result.data)
+
+        if (suggestions.length > 0) {
+          setShowCorrectionDialog(true)
+        }
+
         setActiveTab('validation')
       }
     } catch (error) {
@@ -687,16 +1005,17 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
     }
 
     // Special template for pending tab (gift requests)
-    // Note: CSV uses 'description' as header but backend processes as 'remark'
+    // Note: CSV uses 'description' as header (handles both 'description' and 'remark' for backward compatibility)
     if (tab === 'pending') {
       template = {
-        headers: ['memberLogin', 'giftItem', 'costMyr', 'costLocal', 'category', 'rewardName', 'rewardClubOrder', 'description'],
+        headers: ['merchant', 'memberLogin', 'currency', 'giftItem', 'category', 'giftCost', 'rewardName', 'rewardClubOrder', 'description'],
         sample: {
+          merchant: 'Merchant A',
           memberLogin: 'john.doe',
+          currency: 'MYR',
           giftItem: 'Gift Card',
-          costMyr: '100',
-          costLocal: null,
           category: 'Birthday Gift',
+          giftCost: '100',
           rewardName: 'Luxury Gifts',
           rewardClubOrder: 'RCO-001',
           description: 'Pokemon Gift Card',
@@ -732,7 +1051,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="w-[98vw] max-w-none max-h-[95vh] overflow-y-auto min-w-[1200px]">
+      <DialogContent className=" min-w-[75vw] max-w-[95vw] max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <Upload className="h-5 w-5" />
@@ -850,6 +1169,26 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                       </AlertDescription>
                     </Alert>
                   )}
+
+                  {/* Correction Assistant Button */}
+                  {correctionSuggestions.length > 0 && (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <AlertTriangle className="h-4 w-4 text-orange-500" />
+                        <span className="text-sm text-gray-600">
+                          {correctionSuggestions.length} issues can be automatically corrected
+                        </span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowCorrectionDialog(true)}
+                        className="flex items-center space-x-2"
+                      >
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>View Correction Assistant</span>
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -881,9 +1220,10 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                                   case 'giftItem': return 'Gift Item'
                                   case 'rewardName': return 'Reward Name'
                                   case 'rewardClubOrder': return 'Reward Club Order'
-                                  case 'costMyr': return 'Cost (MYR)'
+                                  case 'giftCost': return 'Gift Cost'
                                   case 'costLocal': return 'Cost (Local)'
                                   case 'category': return 'Category'
+                                  case 'description': return 'Description'
                                   case 'remark': return 'Description'
                                   case '_uploadedByName': return 'Uploaded By'
                                   case '_uploadDate': return 'Upload Date'
@@ -895,7 +1235,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                               })()
 
                               // Skip showing internal fields in preview
-                              if (['_uploadedBy', 'value', 'valueLocal', 'memberId', 'description', 'currency'].includes(header)) {
+                              if (['_uploadedBy', 'memberId', 'description'].includes(header)) {
                                 return null
                               }
 
@@ -912,7 +1252,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                             <tr key={index} className="border-t">
                               {Object.entries(row).map(([key, value], cellIndex) => {
                                 // Skip showing internal fields in preview
-                                if (['_uploadedBy', 'value', 'valueLocal', 'memberId', 'description', 'currency'].includes(key)) {
+                                if (['_uploadedBy', 'memberId', 'description'].includes(key)) {
                                   return null
                                 }
 
@@ -920,7 +1260,7 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
                                 let displayValue = String(value)
                                 if (key === '_uploadDate') {
                                   displayValue = new Date(value as string).toLocaleString()
-                                } else if (key === 'costMyr' || key === 'costLocal') {
+                                } else if (key === 'giftCost') {
                                   displayValue = value ? parseFloat(value as string).toFixed(2) : ''
                                 }
 
@@ -1004,6 +1344,184 @@ export function BulkUploadDialog({ module, tab, trigger, onUploadComplete, user 
           </TabsContent>
         </Tabs>
       </DialogContent>
+
+      {/* Correction Dialog */}
+      <Dialog open={showCorrectionDialog} onOpenChange={setShowCorrectionDialog}>
+        <DialogContent className="w-[90vw] min-w-[50vw] max-w-[90vw] max-h-[90vh] overflow-y-auto p-4">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <AlertTriangle className="h-5 w-5" />
+              <span>Data Correction Assistant</span>
+            </DialogTitle>
+            <DialogDescription>
+              We found {correctionSuggestions.length} issues that can be automatically corrected.
+              Review the suggestions below and apply corrections.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            {/* Summary */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Correction Summary</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{correctionSuggestions.length}</div>
+                    <div className="text-sm text-gray-600">Total Suggestions</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{correctedRows.length}</div>
+                    <div className="text-sm text-gray-600">Rows to Correct</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">{validationResult?.validRows || 0}</div>
+                    <div className="text-sm text-gray-600">Already Valid</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Correction Details */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Correction Details</CardTitle>
+              </CardHeader>
+              <CardContent className="px-4">
+                <div className="space-y-6">
+                  {correctedRows.map((correctedRow) => (
+                    <div key={correctedRow.rowNumber} className="border rounded-lg p-4 sm:p-6 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-lg">Row {correctedRow.rowNumber}</h4>
+                        <Badge variant="outline" className="text-xs">
+                          {correctedRow.suggestions.length} corrections
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        <div className="min-w-0">
+                          <h5 className="font-medium text-sm text-gray-700 mb-2">Original Data</h5>
+                          <div className="space-y-1 text-sm bg-gray-50 p-3 rounded-lg max-h-40 overflow-y-auto">
+                            {Object.entries(correctedRow.originalData).map(([key, value]) => (
+                              <div key={key} className="flex flex-col sm:flex-row gap-1 items-start">
+                                <span className="font-medium text-gray-800 text-xs min-w-[80px] sm:min-w-[100px]">{key}:</span>
+                                <span className="text-gray-600 break-words text-xs flex-1">{String(value)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="min-w-0">
+                          <h5 className="font-medium text-sm text-gray-700 mb-2">Corrected Data</h5>
+                          <div className="space-y-1 text-sm bg-gray-50 p-3 rounded-lg max-h-40 overflow-y-auto">
+                            {Object.entries(correctedRow.correctedData).map(([key, value]) => {
+                              const suggestion = correctedRow.suggestions.find(s => s.field === key)
+                              const isCorrected = suggestion !== undefined
+
+                              return (
+                                <div key={key} className={`flex flex-col sm:flex-row gap-1 items-start ${isCorrected ? 'bg-green-100 p-1 rounded' : ''}`}>
+                                  <span className="font-medium text-gray-800 text-xs min-w-[80px] sm:min-w-[100px]">{key}:</span>
+                                  <span className={`break-words text-xs flex-1 ${isCorrected ? 'text-green-700 font-medium' : 'text-gray-600'}`}>
+                                    {String(value)}
+                                    {isCorrected && <span className="ml-1 text-xs">✓</span>}
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Suggestions */}
+                      <div>
+                        <h5 className="font-medium text-sm text-gray-700 mb-2">Corrections Applied</h5>
+                        <div className="space-y-3">
+                          {correctedRow.suggestions.map((suggestion, index) => (
+                            <div key={index} className="bg-blue-50 p-3 rounded-lg">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                                <span className="font-medium text-sm">{suggestion.field}</span>
+                                <Badge variant="secondary" className="text-xs whitespace-nowrap">
+                                  {suggestion.currentValue} → {suggestion.suggestedValue}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-gray-600 break-words">{suggestion.reason}</p>
+
+                              {/* Member options for memberLogin corrections */}
+                              {suggestion.memberOptions && suggestion.memberOptions.length > 0 && (
+                                <div className="mt-2">
+                                  <p className="text-xs font-medium text-gray-700 mb-1">Available members with similar names:</p>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1">
+                                    {suggestion.memberOptions.slice(0, 3).map((option, optIndex) => (
+                                      <div key={optIndex} className="text-xs bg-white p-2 rounded border hover:bg-gray-50">
+                                        <div className="font-medium text-gray-900 truncate">{option.memberLogin}</div>
+                                        <div className="text-gray-600 mt-1">
+                                          <div className="truncate text-xs">{option.memberName}</div>
+                                          <div className="flex justify-between mt-1 text-xs">
+                                            <span className="text-blue-600 truncate">{option.merchant}</span>
+                                            <span className="text-green-600 ml-1">{option.currency}</span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-between">
+              <div className="flex space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => downloadCorrectedCSV(originalCSVData, `original-${module}-${tab}-data.csv`)}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Original
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const correctedCSV = applyCorrections(originalCSVData, correctedRows)
+                    downloadCorrectedCSV(correctedCSV, `corrected-${module}-${tab}-data.csv`)
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Corrected
+                </Button>
+              </div>
+
+              <div className="flex space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowCorrectionDialog(false)}
+                >
+                  Close
+                </Button>
+                <Button
+                  onClick={() => {
+                    const correctedCSV = applyCorrections(originalCSVData, correctedRows)
+                    // Re-validate with corrected data
+                    processCSVData({ data: correctedCSV })
+                    setShowCorrectionDialog(false)
+                  }}
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Apply Corrections & Re-validate
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }

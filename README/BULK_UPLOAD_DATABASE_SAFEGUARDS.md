@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the comprehensive database-side safeguards implemented to prevent human mistakes and provide rollback capabilities for bulk upload operations.
+This document outlines the comprehensive database-side safeguards implemented to prevent human mistakes and provide rollback capabilities for bulk upload operations, including the latest intelligent data correction assistant and member profile validation features.
 
 ## 🎯 **Key Safeguards Implemented**
 
@@ -48,11 +48,37 @@ CREATE TABLE MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES (
 );
 
 -- Enhanced gift requests table with batch tracking
-ALTER TABLE MY_FLOW.PUBLIC.GIFT_REQUESTS
-ADD COLUMN BATCH_ID VARCHAR(50);
+ALTER TABLE MY_FLOW.PUBLIC.GIFT_DETAILS
+ADD COLUMN BATCH_ID VARCHAR(50),
+ADD COLUMN CURRENCY VARCHAR(10),
+ADD COLUMN MERCHANT_NAME VARCHAR(100);
 ```
 
-### **2. Transaction Management**
+### **2. Member Profile Validation System**
+
+#### **Cross-Reference Validation:**
+
+- **Member Login Validation**: Verify member exists in `ALL_MEMBER_PROFILE`
+- **Merchant Match Validation**: Ensure CSV merchant matches member's actual merchant
+- **Currency Match Validation**: Ensure CSV currency matches member's actual currency
+- **Permission Validation**: Check user has access to specified merchant & currency
+
+#### **Database Schema:**
+
+```sql
+-- Member profiles table for validation
+CREATE OR REPLACE TABLE MY_FLOW.MART.ALL_MEMBER_PROFILE (
+    MEMBER_ID NUMBER(38,0),
+    MEMBER_LOGIN VARCHAR(16777216),
+    MEMBER_NAME VARCHAR(16777216),
+    MERCHANT VARCHAR(16777216),        -- Merchant code
+    MERCHANT_NAME VARCHAR(16777216),   -- Merchant name
+    CURRENCY VARCHAR(16777216),
+    -- ... other fields
+);
+```
+
+### **3. Transaction Management**
 
 #### **Database Transactions:**
 
@@ -66,7 +92,7 @@ ADD COLUMN BATCH_ID VARCHAR(50);
 - ✅ **Automatic Rollback**: Failed imports don't corrupt data
 - ✅ **Isolation**: Other operations aren't affected
 
-### **3. Comprehensive Logging System**
+### **4. Comprehensive Logging System**
 
 #### **Three-Level Logging:**
 
@@ -84,7 +110,7 @@ ADD COLUMN BATCH_ID VARCHAR(50);
    - Complete rollback history
    - Reasons and affected records
 
-### **4. Validation Layers**
+### **5. Enhanced Validation Layers**
 
 #### **Frontend Validation:**
 
@@ -92,6 +118,8 @@ ADD COLUMN BATCH_ID VARCHAR(50);
 - ✅ **Field Validation**: Required fields, data types, formats
 - ✅ **Business Logic**: Cost limits, duplicate checks
 - ✅ **Preview Mode**: Show data before import
+- ✅ **Member Profile Validation**: Cross-reference with member database
+- ✅ **Merchant & Currency Validation**: Permission and match checking
 
 #### **Backend Validation:**
 
@@ -99,8 +127,27 @@ ADD COLUMN BATCH_ID VARCHAR(50);
 - ✅ **Data Type Validation**: Ensure proper data types
 - ✅ **Business Rules**: Cost limits, status transitions
 - ✅ **Duplicate Prevention**: Check for existing records
+- ✅ **Member Existence**: Verify member in database
+- ✅ **Permission Validation**: Check user access rights
 
-### **5. Rollback Mechanisms**
+### **6. Intelligent Data Correction Assistant**
+
+#### **Automatic Error Detection:**
+
+- **Member Login Suggestions**: Find similar member names when exact match fails
+- **Merchant Mismatch Correction**: Auto-correct merchant names to match member's actual merchant
+- **Currency Mismatch Correction**: Auto-correct currency to match member's actual currency
+- **Case Corrections**: Fix category and reward name case issues
+- **Field Suggestions**: Provide available options for member selection
+
+#### **Correction Features:**
+
+- **Side-by-side Comparison**: Original vs corrected data display
+- **Download Options**: Original CSV, corrected CSV for verification
+- **Apply & Re-validate**: Automatic correction application
+- **Member Options**: Show available members with merchant/currency combinations
+
+### **7. Rollback Mechanisms**
 
 #### **Two Rollback Types:**
 
@@ -116,9 +163,12 @@ ADD COLUMN BATCH_ID VARCHAR(50);
 #### **Rollback Process:**
 
 ```sql
--- For all tabs: Update IS_ACTIVE to FALSE (soft delete)
+-- For all tabs: Update status to ROLLED_BACK
 UPDATE MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES
-SET IS_ACTIVE = FALSE, COMPLETED_AT = CURRENT_TIMESTAMP()
+SET STATUS = 'ROLLED_BACK', 
+    ROLLBACK_DATE = CURRENT_TIMESTAMP(),
+    ROLLED_BACK_ROWS = (SELECT COUNT(*) FROM MY_FLOW.PUBLIC.GIFT_DETAILS WHERE BATCH_ID = 'BATCH_123'),
+    ROLLBACK_REASON = 'User requested rollback'
 WHERE BATCH_ID = 'BATCH_123';
 
 -- Remove BATCH_ID from GIFT_DETAILS to make them invisible
@@ -131,13 +181,22 @@ WHERE BATCH_ID = 'BATCH_123';
 
 ### **Two Validation Approaches:**
 
-#### **Approach 1: Pre-Validation (Current Implementation)**
+#### **Approach 1: Pre-Validation with Correction Assistant (Current Implementation)**
 
 ```typescript
 // Frontend validates ALL data before sending to backend
-const validation = validateCSV(csvData)
+const validation = validateCSVWithMemberProfiles(csvData)
 if (!validation.isValid) {
-  // Show errors, don't proceed to import
+  // Generate correction suggestions
+  const { suggestions, correctedRows } = generateCorrectionSuggestions(csvData, validation.errors)
+  
+  // Show correction assistant dialog
+  if (suggestions.length > 0) {
+    setShowCorrectionDialog(true)
+    setCorrectionSuggestions(suggestions)
+    setCorrectedRows(correctedRows)
+  }
+  
   return { success: false, errors: validation.errors }
 }
 
@@ -151,6 +210,8 @@ await importValidatedData(validation.data)
 - ✅ **No partial imports** - prevents data corruption
 - ✅ **Better user experience** - clear feedback before import
 - ✅ **Reduced database load** - no failed transaction attempts
+- ✅ **Intelligent corrections** - automatic error fixing suggestions
+- ✅ **Member validation** - cross-reference with member database
 
 #### **Approach 2: Attempt Import (Alternative)**
 
@@ -171,10 +232,12 @@ const result = await attemptImport(csvData)
 1. **Pre-Upload Validation**
 
    ```typescript
-   // Validate CSV structure and data
-   const validation = validateCSV(csvData)
+   // Validate CSV structure and data with member profiles
+   const validation = await validateCSVWithMemberProfiles(csvData)
    if (!validation.isValid) {
-     return { success: false, errors: validation.errors }
+     // Generate correction suggestions
+     const corrections = generateCorrectionSuggestions(csvData, validation.errors)
+     return { success: false, errors: validation.errors, corrections }
    }
    ```
 
@@ -192,8 +255,8 @@ const result = await attemptImport(csvData)
    // Use database transaction
    await executeQuery('BEGIN TRANSACTION')
    try {
-     // Import all records with batch ID
-     await importRecords(data, batchId)
+     // Import all records with batch ID and member validation
+     await importRecordsWithMemberValidation(data, batchId)
      await executeQuery('COMMIT')
    } catch (error) {
      await executeQuery('ROLLBACK')
@@ -205,6 +268,49 @@ const result = await attemptImport(csvData)
    ```typescript
    // Update batch with results
    await updateBatchStatus(batchId, 'COMPLETED', importedCount)
+   ```
+
+### **Member Profile Validation Process:**
+
+1. **Bulk Member Lookup**
+
+   ```typescript
+   // Get all member logins from CSV
+   const memberLogins = csvData.map(row => row.memberLogin.trim().toLowerCase())
+   
+   // Bulk validate against member database
+   const validation = await bulkValidateMemberLogins(memberLogins)
+   ```
+
+2. **Permission Checking**
+
+   ```typescript
+   // Check user permissions for merchants and currencies
+   const userMerchants = user.permissions['merchants'] || []
+   const userCurrencies = user.permissions['currencies'] || []
+   
+   // Validate each row
+   csvData.forEach(row => {
+     if (!userMerchants.includes(row.merchant)) {
+       errors.push(`No permission for merchant: ${row.merchant}`)
+     }
+     if (!userCurrencies.includes(row.currency)) {
+       errors.push(`No permission for currency: ${row.currency}`)
+     }
+   })
+   ```
+
+3. **Merchant & Currency Matching**
+
+   ```typescript
+   // Validate merchant and currency match member's actual data
+   const memberData = validationMap.get(row.memberLogin.toLowerCase())
+   if (memberData.merchant !== row.merchant.trim()) {
+     errors.push(`Member belongs to merchant "${memberData.merchant}", not "${row.merchant}"`)
+   }
+   if (memberData.currency !== row.currency.trim()) {
+     errors.push(`Member has currency "${memberData.currency}", not "${row.currency}"`)
+   }
    ```
 
 ### **Rollback Process:**
@@ -242,10 +348,11 @@ const result = await attemptImport(csvData)
 
 #### **Before Upload:**
 
-- ✅ **Template Downloads**: Provide correct CSV templates
+- ✅ **Template Downloads**: Provide correct CSV templates with new field structure
 - ✅ **Validation Preview**: Show data before import
 - ✅ **Field Descriptions**: Clear field requirements
 - ✅ **Sample Data**: Example of correct format
+- ✅ **Member Profile Integration**: Show available members
 
 #### **During Upload:**
 
@@ -253,6 +360,7 @@ const result = await attemptImport(csvData)
 - ✅ **Error Details**: Specific error messages
 - ✅ **Warning System**: Non-blocking warnings
 - ✅ **Progress Tracking**: Show import progress
+- ✅ **Correction Assistant**: Automatic error fixing suggestions
 
 #### **After Upload:**
 
@@ -267,10 +375,12 @@ const result = await attemptImport(csvData)
 
 ```sql
 -- Prevent invalid data
-ALTER TABLE GIFT_REQUESTS
-ADD CONSTRAINT chk_cost_positive CHECK (COST > 0),
+ALTER TABLE GIFT_DETAILS
+ADD CONSTRAINT chk_cost_positive CHECK (COST_BASE > 0),
 ADD CONSTRAINT chk_currency_valid CHECK (CURRENCY IN ('MYR', 'VND', 'USD', 'GBP')),
-ADD CONSTRAINT chk_status_valid CHECK (WORKFLOW_STATUS IN ('KAM_Request', 'MKTOps_Processing', 'KAM_Proof', 'SalesOps_Audit'));
+ADD CONSTRAINT chk_status_valid CHECK (WORKFLOW_STATUS IN ('KAM_Request', 'MKTOps_Processing', 'KAM_Proof', 'SalesOps_Audit')),
+ADD CONSTRAINT chk_category_valid CHECK (CATEGORY IN ('Birthday Gift', 'Offline Campaign', 'Online Campaign', 'Festival Gift', 'Leaderboard', 'Loyalty Gift', 'Rewards Club', 'Others')),
+ADD CONSTRAINT chk_reward_name_valid CHECK (REWARD_NAME IN ('Luxury Gifts', 'Electronics', 'Fashion & Accessories', 'Food & Beverages', 'Travel & Experiences', 'Gaming & Entertainment', 'Sports & Fitness', 'Beauty & Wellness', 'Home & Lifestyle', 'Digital Services', 'Gift Cards', 'Others'));
 ```
 
 #### **Business Rules:**
@@ -279,6 +389,8 @@ ADD CONSTRAINT chk_status_valid CHECK (WORKFLOW_STATUS IN ('KAM_Request', 'MKTOp
 - ✅ **Status Transitions**: Valid workflow progression
 - ✅ **Duplicate Prevention**: Unique gift IDs
 - ✅ **Date Validation**: Valid request dates
+- ✅ **Member Validation**: Must exist in member database
+- ✅ **Merchant & Currency Match**: Must match member's actual data
 
 ### **3. Performance Safeguards**
 
@@ -288,6 +400,7 @@ ADD CONSTRAINT chk_status_valid CHECK (WORKFLOW_STATUS IN ('KAM_Request', 'MKTOp
 - ✅ **Memory Management**: Process in chunks
 - ✅ **Timeout Protection**: Prevent hanging operations
 - ✅ **Resource Monitoring**: Track database load
+- ✅ **Member Profile Caching**: Fast member validation
 
 ## 📊 **Monitoring and Analytics**
 
@@ -307,6 +420,14 @@ SELECT TAB,
        COUNT(CASE WHEN STATUS = 'ROLLED_BACK' THEN 1 END) as rollbacks
 FROM BULK_IMPORT_BATCHES
 GROUP BY TAB;
+
+-- Member validation success rate
+SELECT 
+    COUNT(*) as total_attempts,
+    COUNT(CASE WHEN MEMBER_VALIDATION_STATUS = 'SUCCESS' THEN 1 END) as successful_validations,
+    AVG(CASE WHEN MEMBER_VALIDATION_STATUS = 'SUCCESS' THEN 1 ELSE 0 END) as validation_success_rate
+FROM BULK_IMPORT_LOGS
+WHERE MODULE = 'gift-approval' AND TAB = 'pending';
 ```
 
 ### **Error Tracking:**
@@ -315,13 +436,14 @@ GROUP BY TAB;
 - ✅ **User Analytics**: Track user behavior
 - ✅ **Performance Metrics**: Monitor system health
 - ✅ **Alert System**: Notify on unusual activity
+- ✅ **Correction Analytics**: Track correction success rates
 
 ## 🔄 **Recovery Procedures**
 
 ### **1. Immediate Rollback**
 
 ```bash
-# Rollback by batch ID (soft delete - sets IS_ACTIVE = FALSE)
+# Rollback by batch ID (soft delete - sets BATCH_ID = NULL)
 curl -X POST /api/gift-approval/bulk-rollback \
   -H "Content-Type: application/json" \
   -d '{"batchId": "BATCH_123", "rollbackReason": "Wrong data"}'
@@ -335,6 +457,10 @@ SELECT * FROM MY_FLOW.PUBLIC.GIFT_DETAILS WHERE BATCH_ID = 'BATCH_123';
 
 -- Check batch status
 SELECT * FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE BATCH_ID = 'BATCH_123';
+
+-- Find member validation issues
+SELECT * FROM MY_FLOW.MART.ALL_MEMBER_PROFILE 
+WHERE MEMBER_LOGIN IN ('vipuser1', 'vipuser2');
 ```
 
 ### **3. Manual Corrections**
@@ -342,35 +468,45 @@ SELECT * FROM MY_FLOW.PUBLIC.BULK_IMPORT_BATCHES WHERE BATCH_ID = 'BATCH_123';
 ```sql
 -- Update specific records
 UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS
-SET COST_BASE = 1000, CATEGORY = 'Birthday'
+SET COST_BASE = 1000, CATEGORY = 'Birthday Gift'
 WHERE GIFT_ID = 123 AND BATCH_ID = 'BATCH_123';
+
+-- Fix member data if needed
+UPDATE MY_FLOW.MART.ALL_MEMBER_PROFILE
+SET MERCHANT_NAME = 'Beta', CURRENCY = 'MYR'
+WHERE MEMBER_LOGIN = 'vipuser1';
 ```
 
 ## 🎯 **Best Practices**
 
 ### **For Users:**
 
-1. **Always download and use templates**
-2. **Preview data before import**
-3. **Keep batch IDs for reference**
-4. **Test with small datasets first**
-5. **Verify data after import**
+1. **Always download and use templates** with new field structure
+2. **Preview data before import** using validation preview
+3. **Use correction assistant** for automatic error fixing
+4. **Keep batch IDs for reference** and rollback purposes
+5. **Test with small datasets first** before large imports
+6. **Verify member data** matches merchant and currency
+7. **Check permissions** for merchant and currency access
 
 ### **For Administrators:**
 
-1. **Monitor batch success rates**
-2. **Set appropriate batch size limits**
-3. **Regular backup before large imports**
-4. **Train users on proper procedures**
-5. **Maintain audit trails**
+1. **Monitor batch success rates** and correction usage
+2. **Set appropriate batch size limits** for your system
+3. **Regular backup before large imports** to prevent data loss
+4. **Train users on proper procedures** including correction assistant
+5. **Maintain audit trails** for compliance and troubleshooting
+6. **Monitor member profile data** for accuracy
 
 ### **For Developers:**
 
-1. **Always use transactions**
-2. **Implement comprehensive logging**
-3. **Provide clear error messages**
-4. **Test rollback procedures**
-5. **Monitor system performance**
+1. **Always use transactions** for data integrity
+2. **Implement comprehensive logging** for debugging
+3. **Provide clear error messages** with actionable suggestions
+4. **Test rollback procedures** regularly
+5. **Monitor system performance** during bulk operations
+6. **Cache member profiles** for fast validation
+7. **Implement correction suggestions** for better UX
 
 ## 🚀 **Future Enhancements**
 
@@ -381,6 +517,9 @@ WHERE GIFT_ID = 123 AND BATCH_ID = 'BATCH_123';
 - 🔍 **Advanced Analytics**: Machine learning for error prediction
 - 🔐 **Approval Workflows**: Multi-step approval for large batches
 - 📱 **Mobile Notifications**: Real-time status updates
+- 🤖 **AI-Powered Corrections**: Machine learning for better suggestions
+- 📊 **Predictive Validation**: Pre-validate data before upload
+- 🔗 **External System Integration**: Import from external databases
 
 ---
 
@@ -391,4 +530,6 @@ For questions or issues with bulk upload safeguards:
 - **Technical Issues**: Check logs in `BULK_IMPORT_LOGS`
 - **Data Recovery**: Use batch ID to identify affected records
 - **Rollback Help**: Follow rollback procedures in this guide
+- **Member Validation**: Check `ALL_MEMBER_PROFILE` table
+- **Correction Assistant**: Use automatic error fixing features
 - **Emergency**: Contact system administrator for immediate assistance

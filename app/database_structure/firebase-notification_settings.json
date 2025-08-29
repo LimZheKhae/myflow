@@ -1,0 +1,15 @@
+{
+    "createdAt": "2025-08-25T16:19:01.000Z",
+    "email": true,
+    "inApp": true,
+    "modules": {
+        "campaign": true,
+        "gift-approval": true,
+        "reports": false,
+        "user-management": true,
+        "vip-profile": true
+    },
+    "push": true,
+    "updatedAt": "2025-08-25T16:19:01.000Z",
+    "userId": "cYQVoqtAqbP8h6jeiK4cKW98ZE42"
+}

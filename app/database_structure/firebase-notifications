@@ -1,0 +1,21 @@
+{
+  "action": "gift_rejected",
+  "actions": [],
+  "createdAt": "2025-08-28T10:36:38.000Z",
+  "data": {
+    "giftId": 196,
+    "reason": "Why car"
+  },
+  "expiresAt": null,
+  "message": "Gift request #196 has been rejected",
+  "module": "gift-approval",
+  "priority": "high",
+  "read": true,
+  "readAt": "2025-08-28T10:37:46.000Z",
+  "readBy": "ie1XyFV2t9O8KugaGKieao2MxMp1",
+  "roles": ["KAM", "ADMIN"],
+  "targetUserIds": null,
+  "title": "Gift Request Rejected",
+  "type": "rejection",
+  "userId": null
+}

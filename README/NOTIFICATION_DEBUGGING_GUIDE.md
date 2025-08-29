@@ -63,7 +63,7 @@ const mappedGiftData = {
   fullName: giftData.FULL_NAME,
   memberLogin: giftData.MEMBER_LOGIN,
   giftItem: giftData.GIFT_ITEM,
-  costMyr: giftData.COST_BASE,
+  cost: giftData.GIFT_COST,
   category: giftData.CATEGORY,
   kamRequestedBy: giftData.KAM_NAME,
   kamEmail: giftData.KAM_EMAIL,

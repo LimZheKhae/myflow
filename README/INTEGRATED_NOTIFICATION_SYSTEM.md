@@ -108,6 +108,97 @@ await IntegratedNotificationService.sendIntegratedNotification({
 })
 ```
 
+## 🔔 Notification Targeting Rules
+
+This section describes how **notification visibility** is determined based on `userId`, `targetUserIds`, and `roles`.
+
+### 1. User-Specific Notifications (`userId`)
+```typescript
+{
+  userId: "user123",
+  targetUserIds: null,
+  roles: []
+}
+```
+**Condition**: `userId` is set  
+**Visibility**: Only that user (user123) can see  
+**Use Case**: Direct/personal notifications (e.g., revert-to-mktops notifications)
+
+### 2. Targeted User List (`targetUserIds`)
+```typescript
+{
+  userId: null,
+  targetUserIds: ["user1", "user2"],
+  roles: []
+}
+```
+**Condition**: `targetUserIds` contains user IDs  
+**Visibility**: Only listed users can see  
+**Use Case**: Small team/group notifications
+
+### 3. Role-Based Notifications (`roles`)
+```typescript
+{
+  userId: null,
+  targetUserIds: null,
+  roles: ["ADMIN", "MANAGER"]
+}
+```
+**Condition**: `roles` contains role names  
+**Visibility**: All users with any of these roles can see  
+**Use Case**: Role-specific alerts (e.g., Admins only)
+
+### 4. Global Notifications
+```typescript
+{
+  userId: null,
+  targetUserIds: null,
+  roles: []
+}
+```
+**Condition**: All targeting fields empty/null  
+**Visibility**: All authenticated users can see  
+**Use Case**: System-wide announcements
+
+### ⚡ Combinations (OR Logic)
+
+You can combine fields to fine-tune targeting. The general rule is:
+
+**If multiple fields are set, the notification is visible if the user matches any of the criteria. (Logical OR)**
+
+#### ✅ Example A: User + Role
+```typescript
+{
+  userId: "user123",
+  targetUserIds: null,
+  roles: ["ADMIN"]
+}
+```
+**Visibility**: Either user123 OR any ADMIN role  
+**Use Case**: Notify one key person and also all Admins
+
+#### ✅ Example B: Targeted List + Roles
+```typescript
+{
+  userId: null,
+  targetUserIds: ["user1", "user2"],
+  roles: ["MANAGER"]
+}
+```
+**Visibility**: Users user1, user2, OR any MANAGER  
+**Use Case**: Target a working group plus all managers
+
+#### ✅ Example C: User + Target List + Roles
+```typescript
+{
+  userId: "user999",
+  targetUserIds: ["user1", "user2"],
+  roles: ["SUPPORT", "ADMIN"]
+}
+```
+**Visibility**: user999, user1, user2, OR anyone with SUPPORT or ADMIN role  
+**Use Case**: Cover one person, a small team, and broader role-based staff
+
 ## Targeting Options
 
 ### 1. User-specific Targeting
@@ -167,7 +258,7 @@ interface GiftEmailData {
   fullName: string
   memberLogin: string
   giftItem: string
-  costMyr: number
+  cost: number
   category: string
   kamRequestedBy: string
   kamEmail: string
@@ -264,7 +355,7 @@ if (action === 'reject') {
     fullName: giftData.FULL_NAME,
     memberLogin: giftData.MEMBER_LOGIN,
     giftItem: giftData.GIFT_ITEM,
-    costMyr: giftData.COST_BASE,
+    cost: giftData.GIFT_COST,
     category: giftData.CATEGORY,
     kamRequestedBy: giftData.KAM_NAME,
     kamEmail: giftData.KAM_EMAIL,
@@ -275,6 +366,43 @@ if (action === 'reject') {
   await IntegratedNotificationService.sendGiftRejectionNotification(
     mappedGiftData,
     [] // Empty array triggers role-based targeting
+  )
+}
+```
+
+### Revert-to-MKTOps Notifications
+
+The system now includes specific user targeting for revert-to-mktops actions:
+
+```typescript
+// In app/api/gift-approval/update/route.ts
+if (action === 'revert-to-mktops') {
+  // Get gift data to find the PURCHASED_BY user
+  const giftDataQuery = `
+    SELECT 
+      GD.GIFT_ID,
+      GD.MEMBER_LOGIN,
+      GD.GIFT_ITEM,
+      GD.GIFT_COST,
+      GD.CATEGORY,
+      GD.PURCHASED_BY,
+      GD.CREATED_DATE,
+      GD.LAST_MODIFIED_DATE
+    FROM MY_FLOW.PUBLIC.GIFT_DETAILS GD
+    WHERE GD.GIFT_ID = ?
+  `
+  
+  const giftData = giftDataResult[0]
+  const purchasedBy = giftData.PURCHASED_BY // This is the Firebase user ID
+  
+  // Send notification to the specific user who purchased the gift
+  await IntegratedNotificationService.sendToSpecificUser(
+    purchasedBy, // Use the Firebase user ID
+    'Gift Reverted to MKTOps Processing',
+    `Gift #${giftData.GIFT_ID} has been reverted to MKTOps Processing due to delivery issues. Reason: ${data.revertReason || 'Delivery issue detected'}`,
+    'gift-approval',
+    true, // sendEmail: true for revert-to-mktops
+    true  // sendNotification: true for revert-to-mktops
   )
 }
 ```
@@ -301,7 +429,7 @@ if (action.includes('reject')) {
     fullName: gift.FULL_NAME,
     memberLogin: gift.MEMBER_LOGIN,
     giftItem: gift.GIFT_ITEM,
-    costMyr: gift.COST_BASE,
+    cost: gift.GIFT_COST,
     category: gift.CATEGORY,
     kamRequestedBy: gift.KAM_NAME,
     kamEmail: gift.KAM_EMAIL,
@@ -371,8 +499,9 @@ Visit `/test-integrated-notifications` to test the system with:
 
 1. **Single Gift Rejection**: Test single gift rejection notifications
 2. **Bulk Gift Rejection**: Test bulk gift rejection notifications
-3. **Email Service**: Test Brevo email delivery
-4. **Fallback System**: Test when Firebase permissions fail
+3. **Revert-to-MKTOps**: Test specific user targeting for revert actions
+4. **Email Service**: Test Brevo email delivery
+5. **Fallback System**: Test when Firebase permissions fail
 
 ## Error Handling
 
@@ -481,6 +610,20 @@ http://localhost:3000/test-integrated-notifications
 - **Notification Storage**: Firebase for real-time access
 - **View Queries**: Using optimized VIEW_GIFT_DETAILS
 
+## Recent Updates
+
+### Version 2.1.0 (Latest)
+- **Fixed Notification Targeting**: Resolved issue where specific user notifications were visible to all users
+- **Updated Filtering Logic**: Improved frontend notification filtering to properly handle user-specific targeting
+- **Revert-to-MKTOps Notifications**: Added specific user targeting for revert-to-mktops actions
+- **Enhanced Debugging**: Added comprehensive logging for notification targeting and filtering
+
+### Key Changes
+1. **sendToSpecificUser Method**: Now uses `userId` for targeting instead of `targetUserIds`
+2. **Frontend Filtering**: Fixed `isGlobalRole` logic that was causing incorrect visibility
+3. **Database Structure**: Confirmed proper notification and notification_settings collections
+4. **Testing**: Verified that revert-to-mktops notifications only appear for the intended `PURCHASED_BY` user
+
 ## Future Enhancements
 
 1. **Notification Preferences**: User-configurable notification settings
@@ -494,7 +637,7 @@ http://localhost:3000/test-integrated-notifications
 ---
 
 **Last Updated**: December 2024
-**Version**: 2.0.0 (Brevo Integration)
+**Version**: 2.1.0 (Notification Targeting Fix)
 **Status**: Production Ready ✅
 **Email Service**: Brevo (formerly Sendinblue)
 **Free Tier**: 300 emails/day (9,000/month) - PERMANENT

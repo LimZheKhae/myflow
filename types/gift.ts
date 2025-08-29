@@ -217,7 +217,7 @@ export interface PendingTabRow {
   address: string
   rewardName: string
   giftItem: string
-  costMyr: number | null
+  cost: number | null
   costVnd: number | null
   remark: string | null
   rewardClubOrder: string | null
@@ -348,7 +348,7 @@ export interface GiftStatistics {
   processingCount: number
   completedCount: number
   rejectedCount: number
-  averageCostMyr: number
+  averageCost: number
   averageCostVnd: number
   categoryBreakdown: Record<GiftCategory, number>
   statusBreakdown: Record<WorkflowStatus, number>

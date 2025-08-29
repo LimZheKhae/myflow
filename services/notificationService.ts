@@ -56,21 +56,21 @@ export class NotificationService {
       const notifications = allNotifications.filter((notification) => {
         // Check each condition separately for debugging
         const isUnread = !notification.read
-        const isForUser = notification.userId === userId
-        const isGlobal = notification.userId === null
+        const isForSpecificUser = notification.userId === userId
         const isTargeted = notification.targetUserIds && notification.targetUserIds.includes(userId)
         const isRoleBased = notification.roles && notification.roles.includes(userRole)
-        const isGlobalRole = notification.roles && notification.roles.length === 0
+        const isGlobal = notification.userId === null &&
+          (!notification.targetUserIds || notification.targetUserIds.length === 0) &&
+          (!notification.roles || notification.roles.length === 0)
 
-        const shouldShow = isUnread && (isForUser || isGlobal || isTargeted || isRoleBased || isGlobalRole)
+        const shouldShow = isUnread && (isForSpecificUser || isTargeted || isRoleBased || isGlobal)
 
         console.log(`🔔 [FRONTEND] Notification ${notification.id} (${notification.title}):`, {
           isUnread,
-          isForUser,
-          isGlobal,
+          isForSpecificUser,
           isTargeted,
           isRoleBased,
-          isGlobalRole,
+          isGlobal,
           shouldShow,
           userRole,
           notificationRoles: notification.roles,
@@ -242,10 +242,11 @@ export class NotificationService {
         .filter(
           (notification) =>
             notification.userId === userId ||
-            notification.userId === null ||
             (notification.targetUserIds && notification.targetUserIds.includes(userId)) ||
             (notification.roles && notification.roles.includes(userRole)) ||
-            (notification.roles && notification.roles.length === 0)
+            (notification.userId === null &&
+              (!notification.targetUserIds || notification.targetUserIds.length === 0) &&
+              (!notification.roles || notification.roles.length === 0))
         )
     } catch (error) {
       console.error('Error getting all user notifications:', error)

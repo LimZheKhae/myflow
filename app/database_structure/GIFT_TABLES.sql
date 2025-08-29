@@ -181,6 +181,9 @@ create or replace view MY_FLOW.PRESENTATION.VIEW_GIFT_WORKFLOW_TIMELINE(
         WHEN GWT.FROM_STATUS = 'SalesOps_Audit' AND GWT.TO_STATUS = 'Completed'
         THEN 'Completed'
         
+        WHEN GWT.FROM_STATUS = 'KAM_Proof' AND GWT.TO_STATUS = 'MKTOps_Processing'
+        THEN 'Reverted to MKTOps'
+        
         ELSE NULL
         
     END AS TIMELINE_TITLE,
@@ -235,6 +238,13 @@ create or replace view MY_FLOW.PRESENTATION.VIEW_GIFT_WORKFLOW_TIMELINE(
 
         WHEN GWT.FROM_STATUS = 'SalesOps_Audit' AND GWT.TO_STATUS = 'Completed'
         THEN 'Gift Request Completed'
+
+        WHEN GWT.FROM_STATUS = 'KAM_Proof' AND GWT.TO_STATUS = 'MKTOps_Processing'
+        THEN 'Gift reverted to MKTOps Processing due to delivery issue by ' || GD.KAM_PROOF_NAME ||
+            CASE 
+                WHEN GD.GIFT_FEEDBACK IS NOT NULL THEN ': ' || GD.GIFT_FEEDBACK
+                ELSE '' 
+        END
 
         ELSE NULL
     END AS REMARK

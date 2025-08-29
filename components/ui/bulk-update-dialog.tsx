@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useCallback } from 'react'
+import { useMemberProfiles } from '@/contexts/member-profile-context'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { FileUploader } from '@/components/ui/file-uploader'
@@ -14,7 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
-import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Download, Eye, Database, Loader2 } from 'lucide-react'
+import { Upload, FileText, CheckCircle, XCircle, AlertTriangle, Download, Eye, Database, Loader2, ChevronDown } from 'lucide-react'
 import Papa from 'papaparse'
 
 interface BulkUpdateDialogProps {
@@ -28,6 +29,8 @@ interface BulkUpdateDialogProps {
     email?: string
     role?: string
     permissions?: Record<string, string[]>
+    merchants?: string[]
+    currencies?: string[]
   } | null
 }
 
@@ -47,6 +50,11 @@ interface UpdateResult {
   updatedCount: number
   failedCount: number
   batchId?: string
+  failedRows?: Array<{
+    giftId: string
+    error: string
+    rowData?: any
+  }>
 }
 
 interface AutoFillOptions {
@@ -54,8 +62,9 @@ interface AutoFillOptions {
   trackingCode?: string
   status?: string
   uploadedBo?: string
-  receiverFeedback?: string
+  feedback?: string
   remark?: string
+  decision?: string
 }
 
 export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user }: BulkUpdateDialogProps) {
@@ -65,35 +74,226 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
   const [updateResult, setUpdateResult] = useState<UpdateResult | null>(null)
   const [activeTab, setActiveTab] = useState('upload')
   const [autoFillOptions, setAutoFillOptions] = useState<AutoFillOptions>({})
-  const [advanceWorkflow, setAdvanceWorkflow] = useState(false)
-  const [auditDecision, setAuditDecision] = useState<'completed' | 'issue'>('completed')
+
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [originalCsvData, setOriginalCsvData] = useState<any[]>([]) // Store original CSV data
+  const [isExporting, setIsExporting] = useState(false) // Loading state for export
+  const [isValidating, setIsValidating] = useState(false) // Loading state for validation
+  const [selectedExportMerchant, setSelectedExportMerchant] = useState<string>('all') // Selected merchant for export
+
+  // Member profile hooks for validation
+  const { memberProfiles } = useMemberProfiles()
+
+  // Member and Gift validation function using cached member profiles
+  const validateMemberAndGift = (giftId: string, memberLogin: string, merchant: string, currency: string) => {
+    try {
+      // Validate giftId format
+      if (!giftId || giftId.trim() === '') {
+        return {
+          valid: false,
+          error: `Gift ID is required`
+        }
+      }
+
+      // Validate giftId is numeric
+      if (isNaN(Number(giftId))) {
+        return {
+          valid: false,
+          error: `Gift ID "${giftId}" must be a number`
+        }
+      }
+
+      // Find member in cached profiles
+      const member = memberProfiles.find((profile) =>
+        profile.memberLogin.toLowerCase() === memberLogin.trim().toLowerCase()
+      )
+
+      if (!member) {
+        return {
+          valid: false,
+          error: `Member login "${memberLogin.trim()}" not found in member database`
+        }
+      }
+
+      // Validate merchant matches
+      if (member.merchantName && member.merchantName !== merchant.trim()) {
+        return {
+          valid: false,
+          error: `Member "${memberLogin.trim()}" belongs to merchant "${member.merchantName}", not "${merchant.trim()}"`
+        }
+      }
+
+      // Validate currency matches
+      if (member.currency && member.currency !== currency.trim()) {
+        return {
+          valid: false,
+          error: `Member "${memberLogin.trim()}" has currency "${member.currency}", not "${currency.trim()}"`
+        }
+      }
+
+      // Note: Full gift ownership validation (checking if giftId exists and belongs to member) 
+      // will be performed server-side during the actual update since cached profiles
+      // don't contain gift information. Server-side validation ensures:
+      // 1. GiftId exists in database
+      // 2. GiftId belongs to the specified member login
+      // 3. Member's merchant and currency match from database
+
+      // All validations passed
+      return { valid: true }
+    } catch (error) {
+      console.error('Member validation error:', error)
+      return { valid: false, error: 'Validation failed' }
+    }
+  }
+
+  // Enhanced CSV validation with member and gift validation
+  const validateCSVWithMemberValidation = (csvData: any[]): ValidationResult => {
+    const config = getTemplateConfig()
+    const errors: string[] = []
+    const warnings: string[] = []
+    const validData: any[] = []
+    const giftIdSet = new Set<string>()
+
+    // Process each row with member and gift validation
+    for (let index = 0; index < csvData.length; index++) {
+      const row = csvData[index]
+      const rowNumber = index + 2 // +2 because index starts at 0 and we skip header
+      let rowValid = true
+
+      // Trim all string values
+      Object.keys(row).forEach((key) => {
+        if (typeof row[key] === 'string') {
+          row[key] = row[key].trim()
+        }
+      })
+
+      // Check required fields
+      config.requiredFields?.forEach((field: string) => {
+        if (!row[field] || row[field].toString().trim() === '') {
+          errors.push(`Row ${rowNumber}: Missing required field "${field}"`)
+          rowValid = false
+        }
+      })
+
+      // Validate giftId is numeric
+      if (row.giftId && isNaN(Number(row.giftId))) {
+        errors.push(`Row ${rowNumber}: giftId must be a number`)
+        rowValid = false
+      }
+
+      // Check for duplicate giftId
+      if (row.giftId) {
+        const giftIdStr = row.giftId.toString()
+        if (giftIdSet.has(giftIdStr)) {
+          errors.push(`Row ${rowNumber}: Duplicate giftId "${giftIdStr}" found`)
+          rowValid = false
+        } else {
+          giftIdSet.add(giftIdStr)
+        }
+      }
+
+      // Validate merchant and currency permissions for all tabs
+      if (row.merchant && user?.permissions) {
+        const userMerchants = user.permissions['merchants'] || []
+        if (userMerchants.length > 0 && !userMerchants.includes(row.merchant.trim())) {
+          errors.push(`Row ${rowNumber}: Uploader does not have permission to access merchant "${row.merchant.trim()}"`)
+          rowValid = false
+        }
+      }
+
+      if (row.currency && user?.permissions) {
+        const userCurrencies = user.permissions['currencies'] || []
+        if (userCurrencies.length > 0 && !userCurrencies.includes(row.currency.trim())) {
+          errors.push(`Row ${rowNumber}: Uploader does not have permission to access currency "${row.currency.trim()}"`)
+          rowValid = false
+        }
+      }
+
+      // Validate member login, merchant, currency match
+      if (row.memberLogin && row.merchant && row.currency) {
+        console.log(`🔍 Validating row ${rowNumber}:`, {
+          memberLogin: row.memberLogin,
+          merchant: row.merchant,
+          currency: row.currency,
+          availableMembers: memberProfiles.length
+        })
+
+        const validationResult = validateMemberAndGift(
+          row.giftId?.toString() || '',
+          row.memberLogin,
+          row.merchant,
+          row.currency
+        )
+
+        if (!validationResult.valid) {
+          errors.push(`Row ${rowNumber}: ${validationResult.error || 'Member validation failed'}`)
+          rowValid = false
+        }
+      }
+
+      // Note: Gift ID validation will be done server-side during the actual update
+      // No need to show warnings to the user about this
+
+      // Validate status options for processing tab
+      if (tab === 'processing' && row.status && !config.statusOptions.includes(row.status)) {
+        errors.push(`Row ${rowNumber}: Invalid status. Expected one of: ${config.statusOptions.join(', ')}`)
+        rowValid = false
+      }
+
+      // Validate boolean fields
+      config.booleanFields?.forEach((field: string) => {
+        if (row[field] && !['TRUE', 'FALSE', 'true', 'false', '1', '0'].includes(row[field].toString())) {
+          errors.push(`Row ${rowNumber}: ${field} must be TRUE/FALSE, true/false, or 1/0`)
+          rowValid = false
+        }
+      })
+
+      if (rowValid) {
+        validData.push({
+          ...row,
+          _rowNumber: rowNumber,
+          _uploadDate: new Date().toISOString(),
+          _uploadedBy: user?.id!,
+        })
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings,
+      data: validData,
+      totalRows: csvData.length,
+      validRows: validData.length,
+      invalidRows: csvData.length - validData.length,
+    }
+  }
 
   // Get template and validation rules based on tab
   const getTemplateConfig = () => {
     const configs: Record<string, any> = {
       processing: {
-        template: 'giftId,giftItem,giftCost,memberLogin,dispatcher,trackingCode,status,uploadedBo',
+        template: 'giftId,merchant,memberLogin,currency,giftItem,giftCost,dispatcher,trackingCode,status,uploadedBo,decision',
         requiredFields: ['giftId', 'dispatcher', 'trackingCode'],
-        readOnlyFields: ['giftId', 'giftItem', 'giftCost', 'memberLogin'],
-        autoFillFields: ['dispatcher', 'trackingCode', 'status', 'uploadedBo'],
+        readOnlyFields: ['giftId', 'merchant', 'memberLogin', 'currency', 'giftItem', 'giftCost'],
+        autoFillFields: ['status', 'decision'],
         statusOptions: ['Pending', 'In Transit', 'Delivered', 'Failed'],
         booleanFields: ['uploadedBo'],
+        decisionOptions: ['proceed', 'stay'],
       },
       'kam-proof': {
-        template: 'giftId,giftItem,giftCost,memberLogin,receiverFeedback',
+        template: 'giftId,merchant,memberLogin,currency,giftItem,giftCost,feedback,decision',
         requiredFields: ['giftId'],
-        readOnlyFields: ['giftId', 'giftItem', 'giftCost', 'memberLogin'],
-        autoFillFields: ['receiverFeedback'],
-        canAdvanceWorkflow: true,
+        readOnlyFields: ['giftId', 'merchant', 'memberLogin', 'currency', 'giftItem', 'giftCost'],
+        autoFillFields: ['feedback', 'decision'],
+        decisionOptions: ['proceed', 'stay', 'revert'],
       },
       audit: {
-        template: 'giftId,giftItem,memberLogin,remark',
+        template: 'giftId,merchant,memberLogin,currency,giftItem,remark,decision',
         requiredFields: ['giftId', 'remark'],
-        readOnlyFields: ['giftId', 'giftItem', 'memberLogin'],
-        autoFillFields: ['remark'],
-        canAdvanceWorkflow: true,
+        readOnlyFields: ['giftId', 'merchant', 'memberLogin', 'currency', 'giftItem'],
+        autoFillFields: ['remark', 'decision'],
+        decisionOptions: ['completed', 'issue', 'stay'],
       },
     }
     return configs[tab] || {}
@@ -143,6 +343,30 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
           }
         }
 
+        // Validate merchant and currency permissions for all tabs
+        if (row.merchant && user?.permissions) {
+          const userMerchants = user.permissions['merchants'] || []
+          if (userMerchants.length > 0 && !userMerchants.includes(row.merchant.trim())) {
+            errors.push(`Row ${rowNumber}: Uploader does not have permission to access merchant "${row.merchant.trim()}"`)
+            rowValid = false
+          }
+        }
+
+        if (row.currency && user?.permissions) {
+          const userCurrencies = user.permissions['currencies'] || []
+          if (userCurrencies.length > 0 && !userCurrencies.includes(row.currency.trim())) {
+            errors.push(`Row ${rowNumber}: Uploader does not have permission to access currency "${row.currency.trim()}"`)
+            rowValid = false
+          }
+        }
+
+        // Validate member login with merchant and currency match (read-only fields for validation only)
+        if (row.memberLogin && row.merchant && row.currency) {
+          // These fields are read-only and used only for validation
+          // The actual validation will be performed server-side to ensure the gift belongs to the correct member
+          warnings.push(`Row ${rowNumber}: Member validation will be performed during update to ensure memberLogin "${row.memberLogin}" exists with merchant "${row.merchant}" and currency "${row.currency}"`)
+        }
+
         // Validate status options for processing tab
         if (tab === 'processing' && row.status && !config.statusOptions.includes(row.status)) {
           errors.push(`Row ${rowNumber}: Invalid status. Expected one of: ${config.statusOptions.join(', ')}`)
@@ -156,6 +380,28 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
             rowValid = false
           }
         })
+
+        // Validate decision options
+        if (row.decision && config.decisionOptions && !config.decisionOptions.includes(row.decision)) {
+          errors.push(`Row ${rowNumber}: Invalid decision. Expected one of: ${config.decisionOptions.join(', ')}`)
+          rowValid = false
+        }
+
+        // Validate processing tab proceed requirements
+        if (tab === 'processing' && row.decision === 'proceed') {
+          if (!row.dispatcher || row.dispatcher.toString().trim() === '') {
+            errors.push(`Row ${rowNumber}: Dispatcher is required when decision is 'proceed'`)
+            rowValid = false
+          }
+          if (!row.trackingCode || row.trackingCode.toString().trim() === '') {
+            errors.push(`Row ${rowNumber}: Tracking Code is required when decision is 'proceed'`)
+            rowValid = false
+          }
+          if (!row.status || row.status.toString().trim() !== 'Delivered') {
+            errors.push(`Row ${rowNumber}: Status must be 'Delivered' when decision is 'proceed'`)
+            rowValid = false
+          }
+        }
 
         if (rowValid) {
           validData.push({
@@ -181,45 +427,70 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
   )
 
   const handleFileUpload = useCallback(
-    (file: File | null) => {
+    async (file: File | null) => {
       if (!file) return
 
       setUploadedFile(file)
+      setIsValidating(true)
 
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          if (results.errors.length > 0) {
-            toast.error('CSV parsing failed', {
-              description: results.errors.map((err) => err.message).join(', '),
+      try {
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: async (results) => {
+            if (results.errors.length > 0) {
+              toast.error('CSV parsing failed', {
+                description: results.errors.map((err) => err.message).join(', '),
+              })
+              setIsValidating(false)
+              return
+            }
+
+            // Store the original CSV data for auto-fill functionality
+            setOriginalCsvData(results.data as any[])
+
+            // First, do basic CSV validation
+            const basicValidation = validateCSV(results.data as any[])
+
+            // If basic validation passes, do member and gift validation
+            if (basicValidation.isValid) {
+              const enhancedValidation = validateCSVWithMemberValidation(results.data as any[])
+              setValidationResult(enhancedValidation)
+
+              if (enhancedValidation.isValid) {
+                toast.success(`CSV validated successfully`, {
+                  description: `${enhancedValidation.validRows} rows ready for update`,
+                })
+                setActiveTab('preview')
+              } else {
+                console.log('🔍 Enhanced validation errors:', enhancedValidation.errors)
+                toast.error(`CSV validation failed`, {
+                  description: `${enhancedValidation.errors.length} errors found. Check the preview tab for details.`,
+                })
+                setActiveTab('preview')
+              }
+            } else {
+              setValidationResult(basicValidation)
+              console.log('🔍 Basic validation errors:', basicValidation.errors)
+              toast.error(`CSV validation failed`, {
+                description: `${basicValidation.errors.length} errors found. Check the preview tab for details.`,
+              })
+              setActiveTab('preview')
+            }
+
+            setIsValidating(false)
+          },
+          error: (error) => {
+            toast.error('Failed to parse CSV file', {
+              description: error.message,
             })
-            return
-          }
-
-          // Store the original CSV data for auto-fill functionality
-          setOriginalCsvData(results.data as any[])
-
-          const validation = validateCSV(results.data as any[])
-          setValidationResult(validation)
-          setActiveTab('preview')
-
-          if (validation.isValid) {
-            toast.success(`CSV validated successfully`, {
-              description: `${validation.validRows} rows ready for update`,
-            })
-          } else {
-            toast.error(`CSV validation failed`, {
-              description: `${validation.errors.length} errors found`,
-            })
-          }
-        },
-        error: (error) => {
-          toast.error('Failed to parse CSV file', {
-            description: error.message,
-          })
-        },
-      })
+            setIsValidating(false)
+          },
+        })
+      } catch (error) {
+        toast.error('Failed to process file')
+        setIsValidating(false)
+      }
     },
     [validateCSV]
   )
@@ -279,9 +550,7 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
           userId: user?.id || 'unknown',
           userRole: user?.role || '',
           userPermissions: user?.permissions || {},
-          advanceWorkflow: advanceWorkflow,
           autoFillOptions: autoFillOptions,
-          auditDecision: tab === 'audit' ? auditDecision : undefined,
         }),
       })
 
@@ -290,8 +559,8 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
       setUpdateResult(result)
 
       if (result.success) {
-        const successMessage = tab === 'audit' ? `Bulk ${auditDecision === 'completed' ? 'completion' : 'issue marking'} completed successfully!` : 'Bulk update completed successfully!'
-        const description = tab === 'audit' ? `${result.updatedCount} records ${auditDecision === 'completed' ? 'completed' : 'marked as issue'}` : `Updated ${result.updatedCount} records`
+        const successMessage = 'Bulk update completed successfully!'
+        const description = `Updated ${result.updatedCount} records`
 
         toast.success(successMessage, {
           description: description,
@@ -337,9 +606,23 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
     })
   }
 
-  const downloadCurrentGifts = async () => {
+  const downloadCurrentGifts = async (selectedMerchant?: string) => {
+    if (isExporting) return // Prevent multiple clicks
+
+    setIsExporting(true)
     try {
-      const response = await fetch(`/api/gift-approval/export-current?tab=${tab}`, {
+      // Build query parameters
+      const params = new URLSearchParams({
+        tab: tab,
+        userPermissions: JSON.stringify(user?.permissions || {})
+      })
+
+      // Add merchant filter if specified
+      if (selectedMerchant && selectedMerchant !== 'all') {
+        params.append('merchant', selectedMerchant)
+      }
+
+      const response = await fetch(`/api/gift-approval/export-current?${params.toString()}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -361,27 +644,36 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
       const csvData = result.data.map((gift: any) => {
         const row: any = {}
 
-        // Map database fields to CSV columns based on template
+        // Map database fields to CSV columns based on template (reordered)
         if (tab === 'processing') {
           row.giftId = gift.GIFT_ID
+          row.merchant = gift.MERCHANT_NAME || ''
+          row.memberLogin = gift.MEMBER_LOGIN
+          row.currency = gift.CURRENCY || ''
           row.giftItem = gift.GIFT_ITEM
           row.giftCost = gift.GIFT_COST
-          row.memberLogin = gift.MEMBER_LOGIN
           row.dispatcher = gift.DISPATCHER || ''
           row.trackingCode = gift.TRACKING_CODE || ''
           row.status = gift.TRACKING_STATUS || ''
           row.uploadedBo = gift.UPLOADED_BO ? 'TRUE' : 'FALSE'
+          row.decision = gift.DECISION || ''
         } else if (tab === 'kam-proof') {
           row.giftId = gift.GIFT_ID
+          row.merchant = gift.MERCHANT_NAME || ''
+          row.memberLogin = gift.MEMBER_LOGIN
+          row.currency = gift.CURRENCY || ''
           row.giftItem = gift.GIFT_ITEM
           row.giftCost = gift.GIFT_COST
-          row.memberLogin = gift.MEMBER_LOGIN
-          row.receiverFeedback = gift.GIFT_FEEDBACK || ''
+          row.feedback = gift.GIFT_FEEDBACK || ''
+          row.decision = gift.DECISION || ''
         } else if (tab === 'audit') {
           row.giftId = gift.GIFT_ID
-          row.giftItem = gift.GIFT_ITEM
+          row.merchant = gift.MERCHANT_NAME || ''
           row.memberLogin = gift.MEMBER_LOGIN
+          row.currency = gift.CURRENCY || ''
+          row.giftItem = gift.GIFT_ITEM
           row.remark = gift.AUDIT_REMARK || ''
+          row.decision = gift.DECISION || ''
         }
 
         return row
@@ -399,14 +691,20 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
       document.body.removeChild(a)
       window.URL.revokeObjectURL(url)
 
+      const exportDescription = selectedMerchant && selectedMerchant !== 'all'
+        ? `${csvData.length} gifts exported for ${selectedMerchant} in ${tab} stage`
+        : `${csvData.length} gifts exported for ${tab} stage`
+
       toast.success('Current gifts exported successfully!', {
-        description: `${csvData.length} gifts exported for ${tab} stage`,
+        description: exportDescription,
       })
     } catch (error) {
       console.error('Export error:', error)
       toast.error('Failed to export current gifts', {
         description: error instanceof Error ? error.message : 'Unknown error',
       })
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -415,10 +713,10 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
     setUpdateResult(null)
     setActiveTab('upload')
     setAutoFillOptions({})
-    setAdvanceWorkflow(false)
-    setAuditDecision('completed')
     setUploadedFile(null)
     setOriginalCsvData([]) // Reset original CSV data
+    setIsExporting(false) // Reset export loading state
+    setIsValidating(false) // Reset validation loading state
   }
 
   const config = getTemplateConfig()
@@ -447,7 +745,7 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="upload">Upload CSV</TabsTrigger>
             <TabsTrigger value="preview" disabled={!validationResult}>
-              Preview & Options
+              {validationResult?.isValid ? 'Preview & Options' : 'Validation Results'}
             </TabsTrigger>
             <TabsTrigger value="result" disabled={!updateResult}>
               Results
@@ -465,16 +763,71 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
                     <h4 className="font-medium">Export Current {tab.charAt(0).toUpperCase() + tab.slice(1)} Gifts</h4>
                     <p className="text-sm text-gray-600 mt-1">Download all current gifts in this stage to make changes directly</p>
                     <div className="text-xs text-gray-500 mt-2">
-                      <strong>Includes:</strong> All gifts currently in {tab} stage with their current values
+                      <strong>Includes:</strong> All gifts currently in {tab} stage with their current values (filtered by your permissions)
                     </div>
                     <div className="text-xs text-green-600 mt-1">
-                      <strong>Workflow:</strong> Export → Edit in Excel → Upload modified CSV
+                      <strong>Workflow:</strong> Export (All or by Merchant) → Edit in Excel → Upload modified CSV
                     </div>
                   </div>
-                  <Button onClick={downloadCurrentGifts} variant="outline" className="bg-green-50 border-green-200 hover:bg-green-100">
-                    <Download className="h-4 w-4 mr-2" />
-                    Export Current Gifts
-                  </Button>
+                  <div className="flex items-center">
+                    {/* Single Export Button with Dropdown */}
+                    <div className="relative inline-flex">
+                      <Button
+                        onClick={() => downloadCurrentGifts()}
+                        disabled={isExporting}
+                        className="bg-green-600 hover:bg-green-700 text-white rounded-r-none border-r-0"
+                      >
+                        {isExporting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Exporting...
+                          </>
+                        ) : (
+                          <>
+                            <Download className="h-4 w-4 mr-2" />
+                            Export All Gifts
+                          </>
+                        )}
+                      </Button>
+
+                      {/* Dropdown Arrow Button */}
+                      {user?.merchants && user.merchants.length > 0 && (
+                        <Select value={selectedExportMerchant} onValueChange={(value) => {
+                          setSelectedExportMerchant(value);
+                          if (value === 'all') {
+                            downloadCurrentGifts();
+                          } else {
+                            downloadCurrentGifts(value);
+                          }
+                        }}>
+                          <SelectTrigger className="border-l-0 rounded-l-none bg-green-600 hover:bg-green-700 text-white border-green-600 hover:border-green-700 px-1 [&>svg:not(.h-3)]:hidden">
+                            <ChevronDown className="h-3 w-3 text-white" />
+                          </SelectTrigger>
+                          <SelectContent align="end" side="bottom" className="w-48">
+                            <SelectItem value="all">
+                              Export All Gifts
+                            </SelectItem>
+                            <div className="border-t border-gray-200 my-1"></div>
+                            {user.merchants.map((merchant) => (
+                              <SelectItem
+                                key={merchant}
+                                value={merchant}
+                              >
+                                Export {merchant} Gifts
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+
+                    {/* Info message for users without merchant permissions */}
+                    {(!user?.merchants || user.merchants.length === 0) && (
+                      <div className="ml-2 text-xs text-gray-500">
+                        ℹ️ Merchant-specific export options will appear if you have access to multiple merchants
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -496,6 +849,51 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
                         <strong>Read-only fields:</strong> {config.readOnlyFields.join(', ')} (for verification only)
                       </div>
                     )}
+
+                    {/* Enhanced Field Guidance */}
+                    <div className="mt-3 p-3 bg-blue-50 rounded-md border border-blue-200">
+                      <h4 className="text-sm font-medium text-blue-800 mb-2">📋 Field Value Guidelines</h4>
+
+                      {tab === 'processing' && (
+                        <div className="space-y-2 text-xs text-blue-700">
+                          <div><strong>status:</strong> Pending | In Transit | Delivered | Failed</div>
+                          <div><strong>uploadedBo:</strong> TRUE | FALSE</div>
+                          <div><strong>decision:</strong> proceed | stay</div>
+                          <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                            <strong>⚠️ Proceed Requirements:</strong> To use decision="proceed", you must have:
+                            <ul className="ml-4 mt-1 list-disc">
+                              <li>dispatcher: Not empty</li>
+                              <li>trackingCode: Not empty</li>
+                              <li>status: Must be "Delivered"</li>
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+
+                      {tab === 'kam-proof' && (
+                        <div className="space-y-2 text-xs text-blue-700">
+                          <div><strong>feedback:</strong> Any text (customer feedback or revert reason)</div>
+                          <div><strong>decision:</strong> proceed | stay | revert</div>
+                          <div className="mt-2 space-y-1">
+                            <div>• <strong>proceed:</strong> Move to Audit stage</div>
+                            <div>• <strong>stay:</strong> Update feedback only, remain in KAM Proof</div>
+                            <div>• <strong>revert:</strong> Return to MKTOps Processing (delivery issue)</div>
+                          </div>
+                        </div>
+                      )}
+
+                      {tab === 'audit' && (
+                        <div className="space-y-2 text-xs text-blue-700">
+                          <div><strong>remark:</strong> Audit notes/comments (required)</div>
+                          <div><strong>decision:</strong> completed | issue | stay</div>
+                          <div className="mt-2 space-y-1">
+                            <div>• <strong>completed:</strong> Mark as final completion</div>
+                            <div>• <strong>issue:</strong> Return to KAM Proof for review</div>
+                            <div>• <strong>stay:</strong> Update remark only, remain in Audit</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <Button onClick={downloadTemplate} variant="outline">
                     <Download className="h-4 w-4 mr-2" />
@@ -515,7 +913,15 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
                   maxSize={10 * 1024 * 1024} // 10MB
                   onFileSelect={handleFileUpload}
                   placeholder="Upload your CSV file (max 10MB)"
+                  disabled={isValidating}
                 />
+
+                {isValidating && (
+                  <div className="space-y-2 mt-4">
+                    <Progress value={50} />
+                    <p className="text-sm text-gray-600">Validating member and gift data...</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -526,8 +932,8 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <Eye className="h-5 w-5" />
-                      Validation Results
+                      {validationResult.isValid ? <Eye className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+                      {validationResult.isValid ? 'Validation Results' : 'Validation Errors'}
                     </CardTitle>
                     {uploadedFile && (
                       <CardDescription>
@@ -552,30 +958,30 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
                     </div>
 
                     {validationResult.errors.length > 0 && (
-                      <Alert className="mb-4">
-                        <AlertTriangle className="h-4 w-4" />
+                      <Alert className="mb-4 border-red-200 bg-red-50">
+                        <AlertTriangle className="h-4 w-4 text-red-600" />
                         <AlertDescription>
-                          <div className="font-semibold mb-2">Validation Errors:</div>
+                          <div className="font-semibold mb-2 text-red-800">Validation Errors:</div>
                           <ul className="list-disc list-inside space-y-1">
                             {validationResult.errors.slice(0, 10).map((error, index) => (
-                              <li key={index} className="text-sm">
+                              <li key={index} className="text-sm text-red-700">
                                 {error}
                               </li>
                             ))}
-                            {validationResult.errors.length > 10 && <li className="text-sm text-gray-600">... and {validationResult.errors.length - 10} more errors</li>}
+                            {validationResult.errors.length > 10 && <li className="text-sm text-red-600">... and {validationResult.errors.length - 10} more errors</li>}
                           </ul>
                         </AlertDescription>
                       </Alert>
                     )}
 
                     {validationResult.warnings.length > 0 && (
-                      <Alert className="mb-4">
-                        <AlertTriangle className="h-4 w-4" />
+                      <Alert className="mb-4 border-yellow-200 bg-yellow-50">
+                        <AlertTriangle className="h-4 w-4 text-yellow-600" />
                         <AlertDescription>
-                          <div className="font-semibold mb-2">Warnings:</div>
+                          <div className="font-semibold mb-2 text-yellow-800">Warnings:</div>
                           <ul className="list-disc list-inside space-y-1">
                             {validationResult.warnings.map((warning, index) => (
-                              <li key={index} className="text-sm text-yellow-600">
+                              <li key={index} className="text-sm text-yellow-700">
                                 {warning}
                               </li>
                             ))}
@@ -620,6 +1026,19 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
                                   <SelectItem value="FALSE">FALSE</SelectItem>
                                 </SelectContent>
                               </Select>
+                            ) : field === 'decision' && config.decisionOptions ? (
+                              <Select value={autoFillOptions[field as keyof AutoFillOptions] || ''} onValueChange={(value) => setAutoFillOptions((prev) => ({ ...prev, [field]: value }))}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select default decision" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {config.decisionOptions?.map((option: string) => (
+                                    <SelectItem key={option} value={option}>
+                                      {option}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             ) : (
                               <Input id={field} placeholder={`Default ${field}`} value={autoFillOptions[field as keyof AutoFillOptions] || ''} onChange={(e) => setAutoFillOptions((prev) => ({ ...prev, [field]: e.target.value }))} />
                             )}
@@ -632,45 +1051,16 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
                       </CardContent>
                     </Card>
 
-                    {config.canAdvanceWorkflow && (
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>Workflow Options</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          {tab === 'audit' ? (
-                            <div className="space-y-3">
-                              <div className="text-sm font-medium text-gray-700">Audit Decision:</div>
-                              <div className="space-y-2">
-                                <div className="flex items-center space-x-2">
-                                  <input type="radio" id="audit-completed" name="auditDecision" value="completed" checked={auditDecision === 'completed'} onChange={(e) => setAuditDecision(e.target.value as 'completed' | 'issue')} className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500" />
-                                  <Label htmlFor="audit-completed" className="text-sm font-normal">
-                                    Mark as Completed - Move to final stage
-                                  </Label>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                  <input type="radio" id="audit-issue" name="auditDecision" value="issue" checked={auditDecision === 'issue'} onChange={(e) => setAuditDecision(e.target.value as 'completed' | 'issue')} className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500" />
-                                  <Label htmlFor="audit-issue" className="text-sm font-normal">
-                                    Mark as Issue - Return to KAM Proof stage
-                                  </Label>
-                                </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center space-x-2">
-                              <Checkbox id="advanceWorkflow" checked={advanceWorkflow} onCheckedChange={(checked) => setAdvanceWorkflow(checked === true)} />
-                              <Label htmlFor="advanceWorkflow">Advance all records to next workflow stage after update</Label>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    )}
+
 
                     <div className="flex justify-end space-x-2">
                       <Button variant="outline" onClick={() => setActiveTab('upload')}>
                         Back to Upload
                       </Button>
-                      <Button onClick={handleBulkUpdate} disabled={isUpdating}>
+                      <Button
+                        onClick={handleBulkUpdate}
+                        disabled={isUpdating || !validationResult.isValid || validationResult.errors.length > 0}
+                      >
                         {isUpdating ? (
                           <>
                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -679,7 +1069,7 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
                         ) : (
                           <>
                             <Upload className="h-4 w-4 mr-2" />
-                            {tab === 'audit' ? `${auditDecision === 'completed' ? 'Complete' : 'Mark as Issue'} ${validationResult.validRows} Records` : `Update ${validationResult.validRows} Records`}
+                            {`Update ${validationResult.validRows} Records`}
                           </>
                         )}
                       </Button>
@@ -718,6 +1108,25 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
                       {updateResult.batchId && <div className="text-xs text-gray-600 mt-2">Batch ID: {updateResult.batchId}</div>}
                     </AlertDescription>
                   </Alert>
+
+                  {/* Display detailed error messages for failed rows */}
+                  {updateResult.failedRows && updateResult.failedRows.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="font-semibold text-red-800 mb-2">Failed Records Details:</h4>
+                      <div className="max-h-60 overflow-y-auto border border-red-200 rounded-lg p-3 bg-red-50">
+                        {updateResult.failedRows.map((failedRow, index) => (
+                          <div key={index} className="mb-2 p-2 bg-white rounded border-l-4 border-red-500">
+                            <div className="font-medium text-red-800">
+                              Gift ID: {failedRow.giftId}
+                            </div>
+                            <div className="text-sm text-red-700 mt-1">
+                              {failedRow.error}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex justify-end space-x-2 mt-4">
                     <Button variant="outline" onClick={resetDialog}>

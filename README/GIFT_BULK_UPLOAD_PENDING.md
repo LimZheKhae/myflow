@@ -50,7 +50,7 @@ The **GIFT: Bulk Upload - Pending** feature allows users to upload multiple gift
 
 - `memberLogin` - User's member login (e.g., "user123")
 - `giftItem` - Name of the gift item (e.g., "Gift Card")
-- `costMyr` - Cost in Malaysian Ringgit (e.g., "100")
+- `cost` - Cost in Malaysian Ringgit (e.g., "100")
 - `category` - Gift category (e.g., "Birthday")
 
 #### Optional Fields
@@ -70,7 +70,7 @@ The **GIFT: Bulk Upload - Pending** feature allows users to upload multiple gift
 ### 4. CSV Format Example
 
 ```csv
-memberLogin,giftItem,costMyr,category,rewardName,rewardClubOrder,remark
+memberLogin,giftItem,cost,category,rewardName,rewardClubOrder,remark
 user123,Gift Card,100,Birthday,Birthday Reward,RCO-001,VIP birthday gift
 john.doe,Phone,500,Retention,Retention Bonus,RCO-002,High value customer
 maria.smith,Watch,750,High Roller,Premium Gift,RCO-003,Luxury item
