@@ -177,11 +177,11 @@ export async function PUT(request: NextRequest) {
                 mktDeliveredDateSQL = 'NULL'
               }
 
-                            if (processingDecision === 'reject') {
+              if (processingDecision === 'reject') {
                 // Reject the gift - set workflow status to Rejected
                 // For rejections, we don't update tracking status unless it's explicitly set to 'Failed'
                 const rejectTrackingStatus = newTrackingStatus === 'Failed' ? 'Failed' : null
- 
+
                 updateSQL = `
                   UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
                   SET 
