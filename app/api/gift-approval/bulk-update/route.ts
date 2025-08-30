@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { executeQuery } from '@/lib/snowflake/config'
 import { debugSQL } from '@/lib/utils'
 import { logWorkflowTimeline } from '@/lib/workflow-timeline'
-import { NotificationService } from '@/services/notificationService'
 import { ServerNotificationService } from '@/services/serverNotificationService'
 import { IntegratedNotificationService } from '@/services/integratedNotificationService'
 
@@ -155,9 +154,6 @@ export async function PUT(request: NextRequest) {
 
           switch (tab) {
             case 'processing':
-              // Convert uploadedBo to boolean - expecting TRUE or FALSE
-              const uploadedBo = row.uploadedBo === true || row.uploadedBo === 'TRUE'
-
               // Get current tracking status to determine MKT_DELIVERED_DATE handling
               const currentTrackingQuery = `
                 SELECT TRACKING_STATUS 
@@ -168,6 +164,7 @@ export async function PUT(request: NextRequest) {
               const currentTrackingStatus = currentTrackingResult[0]?.TRACKING_STATUS
 
               const newTrackingStatus = row.status?.trim() || 'Pending'
+              const processingDecision = row.decision?.trim()
 
               // Determine MKT_DELIVERED_DATE handling
               let mktDeliveredDateSQL = 'MKT_DELIVERED_DATE' // Keep current value by default
@@ -180,46 +177,64 @@ export async function PUT(request: NextRequest) {
                 mktDeliveredDateSQL = 'NULL'
               }
 
-              updateSQL = `
-                UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
-                SET 
-                  DISPATCHER = ?, 
-                  TRACKING_CODE = ?, 
-                  TRACKING_STATUS = ?,
-                  UPLOADED_BO = ?,
-                  MKT_DELIVERED_DATE = ${mktDeliveredDateSQL},
-                  LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
-                WHERE GIFT_ID = ? AND WORKFLOW_STATUS = 'MKTOps_Processing'
-              `
-
-              updateParams = [row.dispatcher?.trim() || null, row.trackingCode?.trim() || null, newTrackingStatus, uploadedBo, parseInt(row.giftId)]
-
-              // Check if we should advance workflow based on decision field
-              if (row.decision?.trim() === 'proceed') {
+                            if (processingDecision === 'reject') {
+                // Reject the gift - set workflow status to Rejected
+                // For rejections, we don't update tracking status unless it's explicitly set to 'Failed'
+                const rejectTrackingStatus = newTrackingStatus === 'Failed' ? 'Failed' : null
+ 
+                updateSQL = `
+                  UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
+                  SET 
+                    WORKFLOW_STATUS = 'Rejected',
+                    REJECT_REASON = ?,
+                    ${rejectTrackingStatus ? 'TRACKING_STATUS = ?,' : ''}
+                    LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
+                  WHERE GIFT_ID = ? AND WORKFLOW_STATUS = 'MKTOps_Processing'
+                `
+                updateParams = rejectTrackingStatus
+                  ? [row.rejectReason?.trim() || null, rejectTrackingStatus, parseInt(row.giftId)]
+                  : [row.rejectReason?.trim() || null, parseInt(row.giftId)]
+                targetStatus = 'Rejected'
+              } else if (processingDecision === 'proceed') {
+                // Proceed to KAM_Proof
                 updateSQL = `
                   UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
                   SET 
                     DISPATCHER = ?, 
                     TRACKING_CODE = ?, 
                     TRACKING_STATUS = ?,
-                    UPLOADED_BO = ?,
                     WORKFLOW_STATUS = 'KAM_Proof',
                     GIFT_FEEDBACK = NULL,
                     MKT_DELIVERED_DATE = ${mktDeliveredDateSQL},
                     LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
                   WHERE GIFT_ID = ? AND WORKFLOW_STATUS = 'MKTOps_Processing'
                 `
+                updateParams = [row.dispatcher?.trim() || null, row.trackingCode?.trim() || null, newTrackingStatus, parseInt(row.giftId)]
                 targetStatus = 'KAM_Proof'
+              } else {
+                // Stay in processing - just update fields
+                updateSQL = `
+                  UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
+                  SET 
+                    DISPATCHER = ?, 
+                    TRACKING_CODE = ?, 
+                    TRACKING_STATUS = ?,
+                    MKT_DELIVERED_DATE = ${mktDeliveredDateSQL},
+                    LAST_MODIFIED_DATE = CURRENT_TIMESTAMP()
+                  WHERE GIFT_ID = ? AND WORKFLOW_STATUS = 'MKTOps_Processing'
+                `
+                updateParams = [row.dispatcher?.trim() || null, row.trackingCode?.trim() || null, newTrackingStatus, parseInt(row.giftId)]
+                targetStatus = '' // No status change
               }
               break
 
             case 'kam-proof':
               // New logic: decision field determines proceed/revert action
               // If decision is null, just update feedback and stay in KAM_Proof
-              const decision = row.decision?.trim() // New field: 'proceed' or 'revert'
+              const kamDecision = row.decision?.trim() // New field: 'proceed' or 'revert'
               const feedbackText = row.feedback?.trim() || null // Changed from receiverFeedback to feedback
 
-              if (decision === 'proceed') {
+              if (kamDecision === 'proceed') {
                 // Proceed to SalesOps_Audit
                 updateSQL = `
                   UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
@@ -232,7 +247,7 @@ export async function PUT(request: NextRequest) {
                 `
                 updateParams = [feedbackText, userId, parseInt(row.giftId)]
                 targetStatus = 'SalesOps_Audit'
-              } else if (decision === 'revert') {
+              } else if (kamDecision === 'revert') {
                 // Revert to MKTOps_Processing
                 updateSQL = `
                   UPDATE MY_FLOW.PUBLIC.GIFT_DETAILS 
@@ -355,6 +370,20 @@ export async function PUT(request: NextRequest) {
       // Commit transaction
       await executeQuery('COMMIT')
 
+      // Create notification for processing rejections
+      if (tab === 'processing') {
+        const rejectedGifts = data.filter(row => row.decision?.trim() === 'reject')
+        if (rejectedGifts.length > 0) {
+          try {
+            const rejectedGiftIds = rejectedGifts.map(row => parseInt(row.giftId))
+            await createBulkUpdateRejectNotification(rejectedGiftIds, userId)
+          } catch (notificationError) {
+            console.error('Error creating bulk processing reject notification:', notificationError)
+            // Don't fail the request if notification creation fails
+          }
+        }
+      }
+
       // Create notification for audit rejections (mark as issue)
       if (tab === 'audit') {
         const auditIssueGifts = data.filter(row => row.decision?.trim() === 'issue')
@@ -399,7 +428,7 @@ export async function PUT(request: NextRequest) {
                 changingToDelivered: giftsChangingToDelivered.length,
                 giftIds: giftsChangingToDelivered.map(row => row.giftId)
               })
-              await createBulkDeliveryNotification(giftsChangingToDelivered, userId)
+              await createBulkDeliveryNotification(giftsChangingToDelivered, userId, currentTrackingMap)
             } else {
               console.log('🚀 [BULK UPDATE DELIVERY] All gifts already delivered - skipping notification')
             }
@@ -455,49 +484,8 @@ export async function PUT(request: NextRequest) {
 // Helper function to create bulk update reject notifications (audit mark as issue)
 async function createBulkUpdateRejectNotification(giftIds: number[], userId: string) {
   try {
-    await ServerNotificationService.createNotification({
-      userId: null, // Global notification
-      targetUserIds: null,
-      roles: ['KAM', 'ADMIN'], // KAM and Admin should be notified of audit rejections
-      module: 'gift-approval',
-      type: 'audit_rejection',
-      title: 'Audit Issues Found',
-      message: `${giftIds.length} gift(s) have been marked as issues during audit and returned to KAM Proof`,
-      action: 'bulk_audit_reject',
-      priority: 'high',
-      read: false,
-      readAt: null,
-      readBy: null,
-      data: {
-        giftIds,
-        rejectedBy: userId,
-        rejectedCount: giftIds.length,
-        auditAction: 'mark_as_issue',
-      },
-      actions: [
-        {
-          label: 'View Gifts',
-          action: 'navigate',
-          url: '/gift-approval',
-        },
-      ],
-      expiresAt: null,
-    })
-
-    console.log(`✅ Bulk update reject notification created for ${giftIds.length} gifts`)
-  } catch (error) {
-    console.error('Error creating bulk update reject notification:', error)
-    throw error
-  }
-}
-
-// Helper function to create bulk delivery notifications
-async function createBulkDeliveryNotification(deliveredGifts: any[], userId: string) {
-  try {
-    // Get gift data for delivery notification using the view table
-    const giftIds = deliveredGifts.map(row => parseInt(row.giftId))
+    // Get gift data for the notification
     const placeholders = giftIds.map(() => '?').join(',')
-
     const giftDataQuery = `
       SELECT 
         GIFT_ID,
@@ -520,7 +508,7 @@ async function createBulkDeliveryNotification(deliveredGifts: any[], userId: str
     const giftDataResult = await executeQuery(giftDataQuery, giftIds)
 
     if (Array.isArray(giftDataResult) && giftDataResult.length > 0) {
-      // Get the user's name who performed the delivery update
+      // Get the user's name who performed the audit rejection
       let updatedByName = userId // Default to userId if we can't get the name
       try {
         const userQuery = `
@@ -553,9 +541,116 @@ async function createBulkDeliveryNotification(deliveredGifts: any[], userId: str
         updatedBy: updatedByName
       }))
 
-      console.log('🚀 [BULK DELIVERY] Sending bulk delivery notification:', {
+      console.log('🚀 [BULK AUDIT REJECT] Sending bulk audit rejection notification:', {
         giftCount: giftDataArray.length,
         updatedBy: userId
+      })
+
+      // Send integrated notification (both notification and email) to KAM and ADMIN
+      await IntegratedNotificationService.sendBulkGiftRejectionNotification(
+        giftDataArray,
+        userId,
+        'Audit issues found - returned to KAM Proof',
+        ['KAM', 'ADMIN']
+      )
+
+      console.log(`✅ Bulk audit rejection notification created for ${giftDataArray.length} gifts`)
+    }
+  } catch (error) {
+    console.error('Error creating bulk update reject notification:', error)
+    throw error
+  }
+}
+
+// Helper function to create bulk delivery notifications
+async function createBulkDeliveryNotification(deliveredGifts: any[], userId: string, currentTrackingStatusMap: Map<number, string>) {
+  try {
+    // Get gift data for delivery notification using the view table
+    const giftIds = deliveredGifts.map(row => parseInt(row.giftId))
+
+    // Filter to only gifts that are changing FROM non-delivered TO delivered status
+    const giftsChangingToDelivered = giftIds.filter(giftId => {
+      const previousTrackingStatus = currentTrackingStatusMap.get(giftId)
+      const newTrackingStatus = deliveredGifts.find(row => parseInt(row.giftId) === giftId)?.trackingStatus
+      return newTrackingStatus === 'Delivered' && previousTrackingStatus !== 'Delivered'
+    })
+
+    // Only proceed if there are gifts actually changing to delivered status
+    if (giftsChangingToDelivered.length === 0) {
+      console.log('🚀 [BULK DELIVERY] No gifts changing to delivered status, skipping notification')
+      return
+    }
+
+    console.log('🚀 [BULK DELIVERY] Processing bulk delivery notification for gifts changing to delivered')
+    console.log('🚀 [BULK DELIVERY] Gifts changing to delivered:', giftsChangingToDelivered)
+    console.log('🚀 [BULK DELIVERY] Previous tracking statuses:', Object.fromEntries(
+      giftsChangingToDelivered.map(giftId => [giftId, currentTrackingStatusMap.get(giftId)])
+    ))
+
+    const placeholders = giftsChangingToDelivered.map(() => '?').join(',')
+
+    const giftDataQuery = `
+      SELECT 
+        GIFT_ID,
+        FULL_NAME,
+        MEMBER_LOGIN,
+        GIFT_ITEM,
+        GIFT_COST,
+        CATEGORY,
+        KAM_NAME,
+        KAM_EMAIL,
+        MANAGER_NAME,
+        DISPATCHER,
+        TRACKING_CODE,
+        TRACKING_STATUS,
+        CREATED_DATE,
+        LAST_MODIFIED_DATE
+      FROM MY_FLOW.PRESENTATION.VIEW_GIFT_DETAILS 
+      WHERE GIFT_ID IN (${placeholders})
+    `
+    const giftDataResult = await executeQuery(giftDataQuery, giftsChangingToDelivered)
+
+    if (Array.isArray(giftDataResult) && giftDataResult.length > 0) {
+      // Get the user's name who performed the delivery update
+      let updatedByName = userId // Default to userId if we can't get the name
+      try {
+        const userQuery = `
+          SELECT NAME, ROLE 
+          FROM MY_FLOW.GLOBAL_CONFIG.SYS_USER_INFO 
+          WHERE USER_ID = ?
+        `
+        const userResult = await executeQuery(userQuery, [userId])
+        if (Array.isArray(userResult) && userResult.length > 0) {
+          const user = userResult[0]
+          updatedByName = user.NAME || userId
+        }
+      } catch (userError) {
+        console.log('⚠️ Could not fetch user name, using userId:', userId)
+      }
+
+      // Map the view fields to the expected format for the notification service
+      const giftDataArray = giftDataResult.map(gift => ({
+        giftId: gift.GIFT_ID,
+        fullName: gift.FULL_NAME,
+        memberLogin: gift.MEMBER_LOGIN,
+        giftItem: gift.GIFT_ITEM,
+        giftCost: gift.GIFT_COST,
+        category: gift.CATEGORY,
+        kamRequestedBy: gift.KAM_NAME,
+        kamEmail: gift.KAM_EMAIL,
+        dispatcher: gift.DISPATCHER,
+        trackingCode: gift.TRACKING_CODE,
+        trackingStatus: gift.TRACKING_STATUS,
+        updatedBy: updatedByName,
+        createdDate: gift.CREATED_DATE,
+        lastModifiedDate: gift.LAST_MODIFIED_DATE
+      }))
+
+      console.log('🚀 [BULK DELIVERY] Sending bulk delivery notification:', {
+        giftCount: giftDataArray.length,
+        totalGifts: giftIds.length,
+        giftsChangingToDelivered: giftsChangingToDelivered.length,
+        updatedBy: updatedByName
       })
 
       // Send integrated notification (both notification and email) to MKTOPS and ADMIN
@@ -620,7 +715,7 @@ async function createBulkRevertNotification(revertedGifts: any[], userId: string
             'Gifts Reverted to MKTOps Processing',
             `${giftDataResult.length} gift(s) (${giftIdsList}) have been reverted to MKTOps Processing due to delivery issues. Details: ${giftDetails}`,
             'gift-approval',
-            true, // sendEmail: true for revert-to-mktops
+            false, // sendEmail: true for revert-to-mktops
             true  // sendNotification: true for revert-to-mktops
           )
 

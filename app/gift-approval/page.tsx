@@ -2235,6 +2235,7 @@ export default function Gifts() {
         )
       },
     },
+
     {
       accessorKey: 'trackingStatus',
       header: 'Delivery Status',
@@ -2308,6 +2309,13 @@ export default function Gifts() {
               <div className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-200">
                 <CheckCircle className="h-3 w-3" />
                 <span>Ready for KAM</span>
+              </div>
+            )}
+            {/* Show "Returned from KAM" badge for gifts that have been reverted */}
+            {gift.workflowStatus === 'MKTOps_Processing' && gift.giftFeedback && (
+              <div className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200">
+                <ArrowLeft className="h-3 w-3" />
+                <span>Returned from KAM</span>
               </div>
             )}
             {/* Show dispatcher info for quick reference */}
@@ -2506,15 +2514,45 @@ export default function Gifts() {
 
                             {gift.giftFeedback && (
                               <div>
-                                <h5 className="font-medium text-slate-700 mb-2">Delivery Feedback</h5>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                {gift.workflowStatus === 'MKTOps_Processing' ? (
                                   <div>
-                                    <span className="text-slate-600">Feedback:</span> {gift.giftFeedback}
+                                    <h5 className="font-medium text-red-700 mb-2 flex items-center gap-2">
+                                      <ArrowLeft className="h-4 w-4" />
+                                      Revert Reason (Returned from KAM Proof)
+                                    </h5>
+                                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                        <div className="col-span-1 md:col-span-2">
+                                          <span className="text-red-600 font-medium">Reason:</span>
+                                          <div className="mt-1 text-red-700 bg-white p-2 rounded border border-red-200">
+                                            {gift.giftFeedback}
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <span className="text-red-600">Reverted By:</span> {gift.kamProofBy || 'Unknown'}
+                                        </div>
+                                        <div>
+                                          <span className="text-red-600">Date:</span> {gift.lastModifiedDate ? gift.lastModifiedDate.toLocaleDateString() : 'Unknown'}
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
+                                ) : (
                                   <div>
-                                    <span className="text-slate-600">Uploaded By:</span> {gift.kamProofBy || 'Unknown'}
+                                    <h5 className="font-medium text-slate-700 mb-2 flex items-center gap-2">
+                                      <FileText className="h-4 w-4" />
+                                      Delivery Feedback
+                                    </h5>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                      <div>
+                                        <span className="text-slate-600">Feedback:</span> {gift.giftFeedback}
+                                      </div>
+                                      <div>
+                                        <span className="text-slate-600">Uploaded By:</span> {gift.kamProofBy || 'Unknown'}
+                                      </div>
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </div>
                             )}
 
@@ -4430,7 +4468,7 @@ export default function Gifts() {
                     Submitting...
                   </>
                 ) : (
-                  'Submit KAM Proof'
+                  'Submit to Audit'
                 )}
               </Button>
             </div>
@@ -4508,6 +4546,31 @@ export default function Gifts() {
                   </div>
                   <div>
                     <span className="text-green-600">Date:</span> {selectedGift.lastModifiedDate ? selectedGift.lastModifiedDate.toLocaleDateString() : 'N/A'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Revert Reason Summary - Show when gift has been reverted */}
+            {selectedGift?.giftFeedback && selectedGift?.workflowStatus === 'MKTOps_Processing' && (
+              <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                <h4 className="font-medium text-red-900 mb-3 flex items-center gap-2">
+                  <ArrowLeft className="h-4 w-4" />
+                  Revert Reason (Returned from KAM Proof)
+                </h4>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="col-span-2">
+                    <span className="text-red-600 font-medium">Reason:</span>
+                    <div className="mt-1 text-red-700 bg-white p-2 rounded border border-red-200">
+                      {selectedGift.giftFeedback}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-red-600">Reverted By:</span> {selectedGift.kamProofBy || 'Unknown'}
+                    {selectedGift.kamProofEmail && <div className="text-xs text-red-500">({selectedGift.kamProofEmail})</div>}
+                  </div>
+                  <div>
+                    <span className="text-red-600">Date:</span> {selectedGift.lastModifiedDate ? selectedGift.lastModifiedDate.toLocaleDateString() : 'N/A'}
                   </div>
                 </div>
               </div>

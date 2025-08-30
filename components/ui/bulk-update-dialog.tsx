@@ -61,10 +61,10 @@ interface AutoFillOptions {
   dispatcher?: string
   trackingCode?: string
   status?: string
-  uploadedBo?: string
   feedback?: string
   remark?: string
   decision?: string
+  rejectReason?: string
 }
 
 export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user }: BulkUpdateDialogProps) {
@@ -273,17 +273,16 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
   const getTemplateConfig = () => {
     const configs: Record<string, any> = {
       processing: {
-        template: 'giftId,merchant,memberLogin,currency,giftItem,giftCost,dispatcher,trackingCode,status,uploadedBo,decision',
+        template: 'giftId,merchant,memberLogin,currency,giftItem,giftCost,dispatcher,trackingCode,status,decision,rejectReason',
         requiredFields: ['giftId', 'dispatcher', 'trackingCode'],
         readOnlyFields: ['giftId', 'merchant', 'memberLogin', 'currency', 'giftItem', 'giftCost'],
-        autoFillFields: ['status', 'decision'],
+        autoFillFields: ['status', 'decision', 'rejectReason'],
         statusOptions: ['Pending', 'In Transit', 'Delivered', 'Failed'],
-        booleanFields: ['uploadedBo'],
-        decisionOptions: ['proceed', 'stay'],
+        decisionOptions: ['proceed', 'stay', 'reject'],
       },
       'kam-proof': {
         template: 'giftId,merchant,memberLogin,currency,giftItem,giftCost,feedback,decision',
-        requiredFields: ['giftId'],
+        requiredFields: ['giftId', 'feedback'],
         readOnlyFields: ['giftId', 'merchant', 'memberLogin', 'currency', 'giftItem', 'giftCost'],
         autoFillFields: ['feedback', 'decision'],
         decisionOptions: ['proceed', 'stay', 'revert'],
@@ -399,6 +398,19 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
           }
           if (!row.status || row.status.toString().trim() !== 'Delivered') {
             errors.push(`Row ${rowNumber}: Status must be 'Delivered' when decision is 'proceed'`)
+            rowValid = false
+          }
+        }
+
+        // Validate processing tab reject requirements
+        if (tab === 'processing' && row.decision === 'reject') {
+          if (!row.rejectReason || row.rejectReason.toString().trim() === '') {
+            errors.push(`Row ${rowNumber}: Reject Reason is required when decision is 'reject'`)
+            rowValid = false
+          }
+          // When rejecting, status should not be a normal delivery status
+          if (row.status && ['Pending', 'In Transit', 'Delivered'].includes(row.status.toString().trim())) {
+            errors.push(`Row ${rowNumber}: Status cannot be '${row.status}' when decision is 'reject'. Use 'Failed' or leave empty.`)
             rowValid = false
           }
         }
@@ -655,8 +667,8 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
           row.dispatcher = gift.DISPATCHER || ''
           row.trackingCode = gift.TRACKING_CODE || ''
           row.status = gift.TRACKING_STATUS || ''
-          row.uploadedBo = gift.UPLOADED_BO ? 'TRUE' : 'FALSE'
           row.decision = gift.DECISION || ''
+          row.rejectReason = gift.REJECT_REASON || ''
         } else if (tab === 'kam-proof') {
           row.giftId = gift.GIFT_ID
           row.merchant = gift.MERCHANT_NAME || ''
@@ -857,22 +869,31 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
                       {tab === 'processing' && (
                         <div className="space-y-2 text-xs text-blue-700">
                           <div><strong>status:</strong> Pending | In Transit | Delivered | Failed</div>
-                          <div><strong>uploadedBo:</strong> TRUE | FALSE</div>
-                          <div><strong>decision:</strong> proceed | stay</div>
-                          <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
-                            <strong>⚠️ Proceed Requirements:</strong> To use decision="proceed", you must have:
-                            <ul className="ml-4 mt-1 list-disc">
-                              <li>dispatcher: Not empty</li>
-                              <li>trackingCode: Not empty</li>
-                              <li>status: Must be "Delivered"</li>
-                            </ul>
+                          <div><strong>decision:</strong> proceed | stay | reject</div>
+                          <div><strong>rejectReason:</strong> Reason for rejection (required when decision="reject")</div>
+                          <div className="mt-2 space-y-2">
+                            <div className="p-2 bg-yellow-50 border border-yellow-200 rounded">
+                              <strong>⚠️ Proceed Requirements:</strong> To use decision="proceed", you must have:
+                              <ul className="ml-4 mt-1 list-disc">
+                                <li>dispatcher: Not empty</li>
+                                <li>trackingCode: Not empty</li>
+                                <li>status: Must be "Delivered"</li>
+                              </ul>
+                            </div>
+                            <div className="p-2 bg-red-50 border border-red-200 rounded">
+                              <strong>⚠️ Reject Requirements:</strong> To use decision="reject", you must have:
+                              <ul className="ml-4 mt-1 list-disc">
+                                <li>rejectReason: Not empty (reason for rejection)</li>
+                                <li>status: Cannot be 'Pending', 'In Transit', or 'Delivered' (use 'Failed' or leave empty)</li>
+                              </ul>
+                            </div>
                           </div>
                         </div>
                       )}
 
                       {tab === 'kam-proof' && (
                         <div className="space-y-2 text-xs text-blue-700">
-                          <div><strong>feedback:</strong> Any text (customer feedback or revert reason)</div>
+                          <div><strong>feedback:</strong> Any text (customer feedback or revert reason) <span className="text-red-600 font-semibold">*Required</span></div>
                           <div><strong>decision:</strong> proceed | stay | revert</div>
                           <div className="mt-2 space-y-1">
                             <div>• <strong>proceed:</strong> Move to Audit stage</div>
@@ -1016,16 +1037,7 @@ export function BulkUpdateDialog({ module, tab, trigger, onUpdateComplete, user 
                                   ))}
                                 </SelectContent>
                               </Select>
-                            ) : field === 'uploadedBo' ? (
-                              <Select value={autoFillOptions[field as keyof AutoFillOptions] || ''} onValueChange={(value) => setAutoFillOptions((prev) => ({ ...prev, [field]: value }))}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select default BO status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="TRUE">TRUE</SelectItem>
-                                  <SelectItem value="FALSE">FALSE</SelectItem>
-                                </SelectContent>
-                              </Select>
+
                             ) : field === 'decision' && config.decisionOptions ? (
                               <Select value={autoFillOptions[field as keyof AutoFillOptions] || ''} onValueChange={(value) => setAutoFillOptions((prev) => ({ ...prev, [field]: value }))}>
                                 <SelectTrigger>

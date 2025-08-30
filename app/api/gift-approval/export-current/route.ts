@@ -70,9 +70,9 @@ export async function GET(request: NextRequest) {
             GD.DISPATCHER,
             GD.TRACKING_CODE,
             GD.TRACKING_STATUS,
-            GD.UPLOADED_BO,
             GD.WORKFLOW_STATUS,
             GD.CURRENCY,
+            GD.REJECT_REASON,
             REF.DESCRIPTION AS MERCHANT_NAME,
             '' AS DECISION
           FROM MY_FLOW.PUBLIC.GIFT_DETAILS GD
